@@ -1,18 +1,10 @@
 // Jenkinsfile-CI
 
 pipeline {
-    // 🚨 Use the custom image containing Python, pip, and venv
-    agent {
-        docker {
-            image 'mach260595/jenkins-agent-python:latest' 
-            
-            // This is the critical mount for the agent to access the Docker Daemon
-            args '-v /var/run/docker.sock:/var/run/docker.sock' 
-        }
-    }
+    // 1. Run directly on the Jenkins controller (agent any)
+    agent any 
     
     environment {
-        // ... (Environment variables remain the same)
         DOCKER_IMAGE = "mach260595/aceest-fitness"
         DOCKERHUB_CREDENTIAL_ID = 'dockerhub-credentials'
     }
@@ -20,38 +12,42 @@ pipeline {
     stages {
         stage('Test & Lint') {
             steps {
-                echo "Running unit tests and code checks..."
-                // Python is now available, no 'docker.image().inside' needed!
-                sh 'python3 -m venv venv'
-                sh '. venv/bin/activate && pip install -r requirements.txt'
-                sh '. venv/bin/activate && python3 -m pytest' 
+                echo "Running unit tests and code checks using Docker run command..."
+                // 2. Use a manual 'docker run' to bypass the agent { docker { } } permission issue
+                sh """
+                docker run --rm \
+                  -v \${PWD}:/usr/src/app \
+                  -w /usr/src/app \
+                  python:3.11-slim /bin/bash -c \
+                  "python3 -m venv venv && \
+                   . venv/bin/activate && \
+                   pip install -r requirements.txt && \
+                   python3 -m pytest"
+                """
             }
         }
         
         stage('Build Image') {
             environment {
                 // Use the short Git commit hash for the image tag
-                IMAGE_TAG = sh(returnStdout: true, script: 'git rev-parse --short HEAD').trim()
+                IMAGE_TAG = sh(returnStdout: true, script: 'git rev-parse --short HEAD').trim() [cite: 9]
             }
             steps {
                 echo "Building Docker image: ${env.DOCKER_IMAGE}:${env.IMAGE_TAG}"
-                sh "docker build -t ${env.DOCKER_IMAGE}:${env.IMAGE_TAG} ."
+                sh "docker build -t ${env.DOCKER_IMAGE}:${env.IMAGE_TAG} ." [cite: 10]
             }
         }
         
         stage('Push to Docker Hub') {
             steps {
                 withCredentials([usernamePassword(credentialsId: "${env.DOCKERHUB_CREDENTIAL_ID}", 
-                                                  passwordVariable: 'DOCKER_PASSWORD', 
-                                                  usernameVariable: 'DOCKER_USERNAME')]) {
+                                         passwordVariable: 'DOCKER_PASSWORD', 
+                                         usernameVariable: 'DOCKER_USERNAME')]) { [cite: 11]
                     sh "docker login -u ${DOCKER_USERNAME} -p ${DOCKER_PASSWORD}"
+                    sh "docker push ${env.DOCKER_IMAGE}:${env.IMAGE_TAG}" [cite: 12]
                     
-                    // Push the tagged image (e.g., mach260595/aceest-fitness:a1b2c3d)
-                    sh "docker push ${env.DOCKER_IMAGE}:${env.IMAGE_TAG}"
-                    
-                    // Push a 'latest' tag for convenience (optional)
                     sh "docker tag ${env.DOCKER_IMAGE}:${env.IMAGE_TAG} ${env.DOCKER_IMAGE}:latest"
-                    sh "docker push ${env.DOCKER_IMAGE}:latest"
+                    sh "docker push ${env.DOCKER_IMAGE}:latest" [cite: 13]
                 }
             }
         }
