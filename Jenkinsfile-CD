@@ -71,7 +71,7 @@ pipeline {
                     
                     sh """
                         docker run --rm \\
-                            --entrypoint "" \\ 
+                            --entrypoint '' \\ 
                             -v \$(pwd):/workspace \\
                             -v \$HOME/.kube:/root/.kube \\
                             bitnami/kubectl:latest /bin/bash -c '
