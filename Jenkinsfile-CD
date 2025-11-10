@@ -71,19 +71,14 @@ pipeline {
                     
                     sh """
                         docker run --rm \\
-                            --entrypoint '' \\ 
+                            --entrypoint \\"\\" \\ 
                             -v \$(pwd):/workspace \\
                             -v \$HOME/.kube:/root/.kube \\
                             bitnami/kubectl:latest /bin/bash -c '
-                                # Change directory inside the container
-                                cd /workspace
-                                
-                                # 1. Substitute the placeholder \${IMAGE_TAG} in deployment.yaml
-                                sed -i 's|\\\${IMAGE_TAG}|${CURRENT_TAG}|g' k8s/deployment.yaml
-                                
-                                # 2. Apply all Kubernetes manifests
-                                kubectl apply -f k8s/pvc.yaml
-                                kubectl apply -f k8s/service.yaml
+                                cd /workspace; \\
+                                sed -i "s|\\\${IMAGE_TAG}|${CURRENT_TAG}|g" k8s/deployment.yaml; \\ 
+                                kubectl apply -f k8s/pvc.yaml; \\
+                                kubectl apply -f k8s/service.yaml; \\
                                 kubectl apply -f k8s/deployment.yaml
                             '
                     """
