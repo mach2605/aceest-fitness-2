@@ -63,8 +63,7 @@ pipeline {
                     // 1. Substitute the image tag directly on the Jenkins agent.
                     sh "sed -i 's|\\\\\\${IMAGE_TAG}|${CURRENT_TAG}|g' k8s/deployment.yaml"
                     
-                    // 2. Create the execution script in the workspace (now called 'deploy.sh').
-                    // This script uses the absolute path inside the container's mounted workspace.
+                    // 2. Create the execution script in the workspace.
                     writeFile(file: 'deploy.sh', text: """
                         #!/bin/bash
                         # Exit immediately on error and print commands
@@ -76,8 +75,10 @@ pipeline {
                         kubectl apply -f /workspace/k8s/deployment.yaml
                     """)
                     
+                    // CRITICAL FIX: Add execute permissions to the script file.
+                    sh 'chmod +x deploy.sh'
+                    
                     // 3. Execute the script file inside the container.
-                    // We tell Docker to use /bin/bash as the entrypoint and run the file we just created.
                     sh """
                         docker run --rm --entrypoint /bin/bash \\
                             -v \$(pwd):/workspace \\
