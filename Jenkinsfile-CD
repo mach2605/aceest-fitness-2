@@ -12,7 +12,7 @@ pipeline {
     // Environment variables for Docker Hub credentials and image name
     environment {
         DOCKER_IMAGE = "mach260595/aceest-fitness"
-        DOCKERHUB_CREDENTIAL_ID = 'dockerhub-credentials' // Ensure this ID matches your Jenkins credentials
+        DOCKERHUB_CREDENTIAL_ID = 'dockerhub-credentials'
     }
 
     stages {
@@ -51,11 +51,7 @@ pipeline {
                                                   passwordVariable: 'DOCKER_PASSWORD', 
                                                   usernameVariable: 'DOCKER_USERNAME')]) {
                     sh "docker login -u ${DOCKER_USERNAME} -p ${DOCKER_PASSWORD}"
-                    
-                    // Push the newly built image tagged with the Git Tag
                     sh "docker push ${env.DOCKER_IMAGE}:${env.IMAGE_TAG}"
-                    
-                    // Tag and push 'latest' for convenience
                     sh "docker tag ${env.DOCKER_IMAGE}:${env.IMAGE_TAG} ${env.DOCKER_IMAGE}:latest"
                     sh "docker push ${env.DOCKER_IMAGE}:latest"
                 }
@@ -69,7 +65,13 @@ pipeline {
                     
                     echo "Applying deployment with image tag: ${CURRENT_TAG}"
                     
-                    sh "docker run --rm --entrypoint '' -v \$(pwd):/workspace -v \$HOME/.kube:/root/.kube bitnami/kubectl:latest /bin/bash -c 'cd /workspace; sed -i \"s|\\\${IMAGE_TAG}|${CURRENT_TAG}|g\" k8s/deployment.yaml; kubectl apply -f k8s/pvc.yaml; kubectl apply -f k8s/service.yaml; kubectl apply -f k8s/deployment.yaml'"
+                    def BASH_COMMAND = "cd /workspace && " +
+                                       "sed -i 's|\\\${IMAGE_TAG}|${CURRENT_TAG}|g' k8s/deployment.yaml && " +
+                                       "kubectl apply -f k8s/pvc.yaml && " +
+                                       "kubectl apply -f k8s/service.yaml && " +
+                                       "kubectl apply -f k8s/deployment.yaml"
+
+                    sh "docker run --rm --entrypoint '' -v \$(pwd):/workspace -v \$HOME/.kube:/root/.kube bitnami/kubectl:latest /bin/bash -c \"${BASH_COMMAND}\""
                     
                     echo "Deployment complete. Check Minikube status on the host."
                 }
