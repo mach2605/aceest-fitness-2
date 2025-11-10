@@ -60,9 +60,6 @@ pipeline {
                     
                     echo "Applying deployment with image tag: ${CURRENT_TAG}"
                     
-                    // Debug: Verify kubectl is accessible
-                    sh "kubectl version --client"
-                    
                     // Debug: List files to verify they exist
                     sh "ls -la k8s/"
                     
@@ -71,16 +68,30 @@ pipeline {
                     
                     echo "Deploying to Minikube..."
                     
-                    // Apply Kubernetes manifests
-                    sh "kubectl apply -f k8s/pvc.yaml"
-                    sh "kubectl apply -f k8s/service.yaml"
-                    sh "kubectl apply -f k8s/deployment.yaml"
-                    
-                    // Wait for deployment to be ready
-                    sh "kubectl rollout status deployment/aceest-fitness --timeout=120s"
+                    // Fix the kubeconfig paths for Linux
+                    sh '''
+                        # Create a modified kubeconfig with Linux paths
+                        sed 's|C:\\\\Users\\\\cheth\\\\.minikube|/root/.minikube|g' /root/.kube/config > /tmp/kubeconfig-fixed
+                        sed -i 's|\\\\|/|g' /tmp/kubeconfig-fixed
+                        export KUBECONFIG=/tmp/kubeconfig-fixed
+                        
+                        # Verify kubectl can connect
+                        kubectl version --client
+                        kubectl cluster-info
+                        
+                        # Apply Kubernetes manifests
+                        kubectl apply -f k8s/pvc.yaml
+                        kubectl apply -f k8s/service.yaml
+                        kubectl apply -f k8s/deployment.yaml
+                        
+                        # Wait for deployment to be ready
+                        kubectl rollout status deployment/aceest-fitness --timeout=120s
+                        
+                        # Show deployment status
+                        kubectl get pods -l app=aceest-fitness
+                    '''
                     
                     echo "Deployment complete!"
-                    sh "kubectl get pods -l app=aceest-fitness"
                 }
             }
         }
