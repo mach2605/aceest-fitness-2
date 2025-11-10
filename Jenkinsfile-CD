@@ -1,0 +1,51 @@
+// Jenkinsfile-CD
+
+pipeline {
+    agent any
+    
+    // Trigger only on tags
+    options {
+        skipDefaultCheckout()
+    }
+
+    stages {
+        stage('Validate Tag') {
+            steps {
+                script {
+                    if (env.TAG_NAME == null || env.TAG_NAME == "") {
+                        error "Pipeline must be triggered by a Git tag (e.g., v1.0.0). Aborting CD."
+                    }
+                    echo "Starting CD for image tag: ${env.TAG_NAME}"
+                }
+            }
+        }
+        
+        stage('Checkout Manifests') {
+            steps {
+                checkout scm 
+            }
+        }
+
+        stage('Deploy to Minikube') {
+            steps {
+                script {
+                    def CURRENT_TAG = env.TAG_NAME
+                    
+                    echo "Applying deployment with image tag: ${CURRENT_TAG}"
+                    
+                    // 1. Substitute the placeholder ${IMAGE_TAG} in the deployment.yaml
+                    // This uses the Git Tag (e.g., 'v1.0.0') as the image version.
+                    sh "sed -i 's|\\$\\{IMAGE_TAG\\}|${CURRENT_TAG}|g' k8s/deployment.yaml"
+                    
+                    // 2. Apply all Kubernetes manifests in the 'k8s/' directory
+                    sh "kubectl apply -f k8s/pvc.yaml"
+                    sh "kubectl apply -f k8s/service.yaml"
+                    sh "kubectl apply -f k8s/deployment.yaml" 
+                    
+                    echo "Deployment complete. Waiting for Minikube service URL..."
+                    sh "minikube service aceest-fitness-service --url"
+                }
+            }
+        }
+    }
+}

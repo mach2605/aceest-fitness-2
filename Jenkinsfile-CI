@@ -1,0 +1,57 @@
+// Jenkinsfile-CI
+
+pipeline {
+    agent any
+    
+    environment {
+        // 🚨 CORRECTED: Use your full Docker Hub repository path
+        DOCKER_IMAGE = "mach260595/aceest-fitness" 
+        // This ID must match the 'Username with password' credential created in Jenkins
+        DOCKERHUB_CREDENTIAL_ID = 'dockerhub-credentials'
+    }
+
+    stages {
+        stage('Checkout') {
+            steps {
+                checkout scm 
+            }
+        }
+        
+        stage('Test & Lint') {
+            steps {
+                echo "Running unit tests and code checks..."
+                sh 'python -m venv venv'
+                sh '. venv/bin/activate && pip install -r requirements.txt'
+                sh '. venv/bin/activate && python -m pytest' 
+            }
+        }
+        
+        stage('Build Image') {
+            environment {
+                // Use the short Git commit hash for the image tag
+                IMAGE_TAG = sh(returnStdout: true, script: 'git rev-parse --short HEAD').trim()
+            }
+            steps {
+                echo "Building Docker image: ${env.DOCKER_IMAGE}:${env.IMAGE_TAG}"
+                sh "docker build -t ${env.DOCKER_IMAGE}:${env.IMAGE_TAG} ."
+            }
+        }
+        
+        stage('Push to Docker Hub') {
+            steps {
+                withCredentials([usernamePassword(credentialsId: "${env.DOCKERHUB_CREDENTIAL_ID}", 
+                                                  passwordVariable: 'DOCKER_PASSWORD', 
+                                                  usernameVariable: 'DOCKER_USERNAME')]) {
+                    sh "docker login -u ${DOCKER_USERNAME} -p ${DOCKER_PASSWORD}"
+                    
+                    // Push the tagged image (e.g., mach260595/aceest-fitness:a1b2c3d)
+                    sh "docker push ${env.DOCKER_IMAGE}:${env.IMAGE_TAG}"
+                    
+                    // Push a 'latest' tag for convenience (optional)
+                    sh "docker tag ${env.DOCKER_IMAGE}:${env.IMAGE_TAG} ${env.DOCKER_IMAGE}:latest"
+                    sh "docker push ${env.DOCKER_IMAGE}:latest"
+                }
+            }
+        }
+    }
+}

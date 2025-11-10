@@ -1,0 +1,76 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+
+# C extensions
+*.so
+
+# Distribution / packaging
+build/
+dist/
+*.egg-info/
+pip-wheel-metadata/
+
+# Virtual environments
+.venv/
+venv/
+env/
+ENV/
+
+# Installer logs
+pip-log.txt
+pip-delete-this-directory.txt
+
+# PyInstaller
+*.manifest
+*.spec
+
+# Unit test / coverage reports
+htmlcov/
+.tox/
+.nox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+*.py,cover
+
+# Jupyter
+.ipynb_checkpoints
+
+# IDEs and editors
+.vscode/
+.idea/
+*.sublime-project
+*.sublime-workspace
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Flask / environment files
+instance/
+*.log
+*.sqlite3
+.env
+.env.*
+
+# Project generated data
+workouts_data.json
+workouts_v1.json
+
+# Backup files
+*.bak
+
+ACEest_Fitness-V1.0.py
+ACEest_Fitness-V1.1.py
+ACEest_Fitness-V1.2.1.py
+ACEest_Fitness-V1.2.2.py
+ACEest_Fitness-V1.2.3.py
+ACEest_Fitness-V1.2.py
+ACEest_Fitness-V1.3.py
+ACEest_Fitness.py
