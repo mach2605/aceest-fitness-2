@@ -20,10 +20,12 @@ pipeline {
         stage('Test & Lint') {
             steps {
                 echo "Running unit tests and code checks..."
-                docker.image('python:3.11-slim').inside {
-                    sh 'python -m venv venv'
-                    sh '. venv/bin/activate && pip install -r requirements.txt'
-                    sh '. venv/bin/activate && python -m pytest' 
+                script {
+                    docker.image('python:3.11-slim').inside {
+                        sh 'python -m venv venv'
+                        sh '. venv/bin/activate && pip install -r requirements.txt'
+                        sh '. venv/bin/activate && python -m pytest' 
+                    }
                 }
                 sh 'python -m venv venv'
                 sh '. venv/bin/activate && pip install -r requirements.txt'
