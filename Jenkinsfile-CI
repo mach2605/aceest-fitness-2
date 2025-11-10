@@ -9,7 +9,6 @@ pipeline {
     stages {
         stage('Test & Lint') {
             steps {
-                deleteDir() 
                 echo "Running unit tests and code checks on dedicated agent..."
                 sh 'python3 -m venv venv'
                 sh '. venv/bin/activate && pip install -r requirements.txt'
@@ -38,6 +37,13 @@ pipeline {
                     sh "docker tag ${env.DOCKER_IMAGE}:${env.IMAGE_TAG} ${env.DOCKER_IMAGE}:latest"
                     sh "docker push ${env.DOCKER_IMAGE}:latest"
                 }
+            }
+        }
+        
+        stage('Cleanup') {
+            steps {
+                echo "Cleaning up workspace on agent..."
+                deleteDir() 
             }
         }
     }
