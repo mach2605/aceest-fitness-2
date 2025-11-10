@@ -60,24 +60,27 @@ pipeline {
                     
                     echo "Applying deployment with image tag: ${CURRENT_TAG}"
                     
+                    // Debug: Verify kubectl is accessible
+                    sh "kubectl version --client"
+                    
+                    // Debug: List files to verify they exist
+                    sh "ls -la k8s/"
+                    
+                    // Update deployment.yaml with the current tag
                     sh "sed -i 's|\\${IMAGE_TAG}|${CURRENT_TAG}|g' k8s/deployment.yaml"
                     
-                    def WORKSPACE_PATH = pwd()
+                    echo "Deploying to Minikube..."
                     
-                    sh """
-                        docker run --rm \\
-                            --entrypoint '' \\
-                            -v ${WORKSPACE_PATH}:/usr/src/app \\
-                            -v \$HOME/.kube:/root/.kube \\
-                            -w /usr/src/app \\
-                            bitnami/kubectl:latest /bin/bash -c "
-                                kubectl apply -f k8s/pvc.yaml
-                                kubectl apply -f k8s/service.yaml
-                                kubectl apply -f k8s/deployment.yaml
-                            "
-                    """
+                    // Apply Kubernetes manifests
+                    sh "kubectl apply -f k8s/pvc.yaml"
+                    sh "kubectl apply -f k8s/service.yaml"
+                    sh "kubectl apply -f k8s/deployment.yaml"
                     
-                    echo "Deployment complete. Check Minikube status on the host."
+                    // Wait for deployment to be ready
+                    sh "kubectl rollout status deployment/aceest-fitness --timeout=120s"
+                    
+                    echo "Deployment complete!"
+                    sh "kubectl get pods -l app=aceest-fitness"
                 }
             }
         }
@@ -86,6 +89,15 @@ pipeline {
             steps {
                 deleteDir()
             }
+        }
+    }
+    
+    post {
+        success {
+            echo "✅ CD Pipeline completed successfully for tag ${env.TAG_NAME}"
+        }
+        failure {
+            echo "❌ CD Pipeline failed. Check the logs above."
         }
     }
 }
