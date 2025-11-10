@@ -1,11 +1,10 @@
 // Jenkinsfile-CD
-
 pipeline {
     agent any
     
-    // Trigger only on tags
-    options {
-        skipDefaultCheckout()
+    environment {
+        DOCKER_IMAGE = "mach260595/aceest-fitness"
+        DOCKERHUB_CREDENTIAL_ID = 'dockerhub-credentials' // *** FIX for 'credentials ID null' error ***
     }
 
     stages {
@@ -20,16 +19,17 @@ pipeline {
             }
         }
         
-        stage('Checkout Manifests') {
+        stage('Checkout Manifests & Code') {
             steps {
-                checkout scm 
+                // Downloads all files (code, Dockerfile, k8s YAMLs)
+                checkout scm
             }
         }
 
         stage('Build Image') {
             steps {
                 script {
-                    env.IMAGE_TAG = sh(returnStdout: true, script: 'git rev-parse --short HEAD').trim()
+                    env.IMAGE_TAG = env.TAG_NAME 
                 }
                 echo "Building Docker image: ${env.DOCKER_IMAGE}:${env.IMAGE_TAG}"
                 sh "docker build -t ${env.DOCKER_IMAGE}:${env.IMAGE_TAG} ."
@@ -42,7 +42,10 @@ pipeline {
                                                   passwordVariable: 'DOCKER_PASSWORD', 
                                                   usernameVariable: 'DOCKER_USERNAME')]) {
                     sh "docker login -u ${DOCKER_USERNAME} -p ${DOCKER_PASSWORD}"
+                    
                     sh "docker push ${env.DOCKER_IMAGE}:${env.IMAGE_TAG}"
+                    
+                    // Tag and push 'latest' for convenience
                     sh "docker tag ${env.DOCKER_IMAGE}:${env.IMAGE_TAG} ${env.DOCKER_IMAGE}:latest"
                     sh "docker push ${env.DOCKER_IMAGE}:latest"
                 }
@@ -56,12 +59,9 @@ pipeline {
                     
                     echo "Applying deployment with image tag: ${CURRENT_TAG}"
                     
-                    // 1. Substitute the placeholder ${IMAGE_TAG} in the deployment.yaml
-                    // This uses the Git Tag (e.g., 'v1.0.0') as the image version.
-                    // sh "sed -i 's|\\$\\{IMAGE_TAG\\}|${CURRENT_TAG}|g' k8s/deployment.yaml"
                     sh "sed -i 's|\\\${IMAGE_TAG}|${CURRENT_TAG}|g' k8s/deployment.yaml"
                     
-                    // 2. Apply all Kubernetes manifests in the 'k8s/' directory
+                    // Apply all Kubernetes manifests
                     sh "kubectl apply -f k8s/pvc.yaml"
                     sh "kubectl apply -f k8s/service.yaml"
                     sh "kubectl apply -f k8s/deployment.yaml" 
@@ -69,6 +69,12 @@ pipeline {
                     echo "Deployment complete. Waiting for Minikube service URL..."
                     sh "minikube service aceest-fitness-service --url"
                 }
+            }
+        }
+        
+        stage('Cleanup Workspace') {
+            steps {
+                deleteDir()
             }
         }
     }
