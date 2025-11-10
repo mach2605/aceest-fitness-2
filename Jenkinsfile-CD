@@ -58,7 +58,8 @@ pipeline {
                     
                     // 1. Substitute the placeholder ${IMAGE_TAG} in the deployment.yaml
                     // This uses the Git Tag (e.g., 'v1.0.0') as the image version.
-                    sh "sed -i 's|\\$\\{IMAGE_TAG\\}|${CURRENT_TAG}|g' k8s/deployment.yaml"
+                    // sh "sed -i 's|\\$\\{IMAGE_TAG\\}|${CURRENT_TAG}|g' k8s/deployment.yaml"
+                    sh "sed -i 's|\\\${IMAGE_TAG}|${CURRENT_TAG}|g' k8s/deployment.yaml"
                     
                     // 2. Apply all Kubernetes manifests in the 'k8s/' directory
                     sh "kubectl apply -f k8s/pvc.yaml"
