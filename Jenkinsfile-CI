@@ -1,6 +1,11 @@
 pipeline {
     agent { label 'docker-build' } 
     
+    options {
+        // This is the permanent fix for checkout issues
+        cleanWs() 
+    }
+    
     environment {
         DOCKER_IMAGE = "mach260595/aceest-fitness"
         DOCKERHUB_CREDENTIAL_ID = 'dockerhub-credentials'
@@ -23,7 +28,8 @@ pipeline {
                     env.IMAGE_TAG = sh(returnStdout: true, script: 'git rev-parse --short HEAD').trim()
                 }
                 echo "Building Docker image: ${env.DOCKER_IMAGE}:${env.IMAGE_TAG}"
-                sh "docker build -t ${env.DOCKER_IMAGE}:${env.IMAGE_TAG} ."
+                // Runs as root due to the -u 0 flag on the agent
+                [cite_start]sh "docker build -t ${env.DOCKER_IMAGE}:${env.IMAGE_TAG} ." [cite: 9]
             }
         }
         
@@ -32,8 +38,9 @@ pipeline {
                 withCredentials([usernamePassword(credentialsId: "${env.DOCKERHUB_CREDENTIAL_ID}", 
                                                   passwordVariable: 'DOCKER_PASSWORD', 
                                                   usernameVariable: 'DOCKER_USERNAME')]) {
-                    sh "docker login -u ${DOCKER_USERNAME} -p ${DOCKER_PASSWORD}"
-                    sh "docker push ${env.DOCKER_IMAGE}:${env.IMAGE_TAG}"
+                    // Runs as root due to the -u 0 flag on the agent
+                    [cite_start]sh "docker login -u ${DOCKER_USERNAME} -p ${DOCKER_PASSWORD}" [cite: 10]
+                    [cite_start]sh "docker push ${env.DOCKER_IMAGE}:${env.IMAGE_TAG}" [cite: 11]
                     sh "docker tag ${env.DOCKER_IMAGE}:${env.IMAGE_TAG} ${env.DOCKER_IMAGE}:latest"
                     sh "docker push ${env.DOCKER_IMAGE}:latest"
                 }
