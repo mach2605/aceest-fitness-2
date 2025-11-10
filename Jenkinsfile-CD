@@ -1,15 +1,12 @@
 // Jenkinsfile-CD
 
 pipeline {
-    // Explicitly target the agent that has the Docker daemon accessible for building/pushing
     agent { label 'docker-build' } 
     
-    // Trigger only on tags
     options {
         skipDefaultCheckout()
     }
     
-    // Environment variables for Docker Hub credentials and image name
     environment {
         DOCKER_IMAGE = "mach260595/aceest-fitness"
         DOCKERHUB_CREDENTIAL_ID = 'dockerhub-credentials'
@@ -29,7 +26,6 @@ pipeline {
         
         stage('Checkout Manifests & Code') {
             steps {
-                // Downloads the repository contents (code, Dockerfile, k8s YAMLs)
                 checkout scm 
             }
         }
@@ -64,10 +60,34 @@ pipeline {
                     
                     echo "Applying deployment with image tag: ${CURRENT_TAG}"
                     
+                    // 1. Substitute the image tag directly on the Jenkins agent.
                     sh "sed -i 's|\\\\\\${IMAGE_TAG}|${CURRENT_TAG}|g' k8s/deployment.yaml"
                     
-                    sh 'docker run --rm --entrypoint "" -v $(pwd):/workspace -v $HOME/.kube:/root/.kube bitnami/kubectl:latest /bin/bash -c "kubectl apply -f /workspace/k8s/pvc.yaml && kubectl apply -f /workspace/k8s/service.yaml && kubectl apply -f /workspace/k8s/deployment.yaml"'
+                    // 2. Create the execution script in the workspace (now called 'deploy.sh').
+                    // This script uses the absolute path inside the container's mounted workspace.
+                    writeFile(file: 'deploy.sh', text: """
+                        #!/bin/bash
+                        # Exit immediately on error and print commands
+                        set -eux 
+
+                        # Apply manifests from the mounted workspace
+                        kubectl apply -f /workspace/k8s/pvc.yaml
+                        kubectl apply -f /workspace/k8s/service.yaml
+                        kubectl apply -f /workspace/k8s/deployment.yaml
+                    """)
                     
+                    // 3. Execute the script file inside the container.
+                    // We tell Docker to use /bin/bash as the entrypoint and run the file we just created.
+                    sh """
+                        docker run --rm --entrypoint /bin/bash \\
+                            -v \$(pwd):/workspace \\
+                            -v \$HOME/.kube:/root/.kube \\
+                            bitnami/kubectl:latest /workspace/deploy.sh
+                    """
+                    
+                    // 4. Clean up the temporary script file.
+                    sh "rm deploy.sh"
+
                     echo "Deployment complete. Check Minikube status on the host."
                 }
             }
