@@ -12,7 +12,7 @@ pipeline {
     // Environment variables for Docker Hub credentials and image name
     environment {
         DOCKER_IMAGE = "mach260595/aceest-fitness"
-        DOCKERHUB_CREDENTIAL_ID = 'dockerhub-credentials'
+        DOCKERHUB_CREDENTIAL_ID = 'dockerhub-credentials' // Ensure this ID matches your Jenkins credentials
     }
 
     stages {
@@ -71,9 +71,10 @@ pipeline {
                     
                     sh """
                         docker run --rm \\
+                            --entrypoint "" \\ 
                             -v \$(pwd):/workspace \\
                             -v \$HOME/.kube:/root/.kube \\
-                            bitnami/kubectl:latest /bin/bash -c ' // <-- FIX: Single quote here
+                            bitnami/kubectl:latest /bin/bash -c '
                                 # Change directory inside the container
                                 cd /workspace
                                 
@@ -84,7 +85,7 @@ pipeline {
                                 kubectl apply -f k8s/pvc.yaml
                                 kubectl apply -f k8s/service.yaml
                                 kubectl apply -f k8s/deployment.yaml
-                            ' // <-- FIX: Single quote here
+                            '
                     """
                     echo "Deployment complete. Check Minikube status on the host."
                 }
