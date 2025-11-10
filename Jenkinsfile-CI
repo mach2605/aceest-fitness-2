@@ -23,11 +23,7 @@ pipeline {
                     env.IMAGE_TAG = sh(returnStdout: true, script: 'git rev-parse --short HEAD').trim()
                 }
                 echo "Building Docker image: ${env.DOCKER_IMAGE}:${env.IMAGE_TAG}"
-                
-                // FIX: Execute sh command as root user to bypass the socket permission denial
-                withUser('root') {
-                    sh "docker build -t ${env.DOCKER_IMAGE}:${env.IMAGE_TAG} ."
-                }
+                sh "docker build -t ${env.DOCKER_IMAGE}:${env.IMAGE_TAG} ."
             }
         }
         
@@ -36,14 +32,10 @@ pipeline {
                 withCredentials([usernamePassword(credentialsId: "${env.DOCKERHUB_CREDENTIAL_ID}", 
                                                   passwordVariable: 'DOCKER_PASSWORD', 
                                                   usernameVariable: 'DOCKER_USERNAME')]) {
-                    
-                    // FIX: Execute all sh commands as root user
-                    withUser('root') {
-                        sh "docker login -u ${DOCKER_USERNAME} -p ${DOCKER_PASSWORD}"
-                        sh "docker push ${env.DOCKER_IMAGE}:${env.IMAGE_TAG}"
-                        sh "docker tag ${env.DOCKER_IMAGE}:${env.IMAGE_TAG} ${env.DOCKER_IMAGE}:latest"
-                        sh "docker push ${env.DOCKER_IMAGE}:latest"
-                    }
+                    sh "docker login -u ${DOCKER_USERNAME} -p ${DOCKER_PASSWORD}"
+                    sh "docker push ${env.DOCKER_IMAGE}:${env.IMAGE_TAG}"
+                    sh "docker tag ${env.DOCKER_IMAGE}:${env.IMAGE_TAG} ${env.DOCKER_IMAGE}:latest"
+                    sh "docker push ${env.DOCKER_IMAGE}:latest"
                 }
             }
         }
