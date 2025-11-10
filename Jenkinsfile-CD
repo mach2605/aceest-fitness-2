@@ -66,16 +66,7 @@ pipeline {
                     
                     sh "sed -i 's|\\\\\\${IMAGE_TAG}|${CURRENT_TAG}|g' k8s/deployment.yaml"
                     
-                    sh """
-                        docker run --rm --entrypoint '' \\
-                            -v \$(pwd):/workspace \\
-                            -v \$HOME/.kube:/root/.kube \\
-                            bitnami/kubectl:latest /bin/bash -c "
-                                kubectl apply -f /workspace/k8s/pvc.yaml
-                                kubectl apply -f /workspace/k8s/service.yaml
-                                kubectl apply -f /workspace/k8s/deployment.yaml
-                            "
-                    """
+                    sh 'docker run --rm --entrypoint "" -v $(pwd):/workspace -v $HOME/.kube:/root/.kube bitnami/kubectl:latest /bin/bash -c "kubectl apply -f /workspace/k8s/pvc.yaml && kubectl apply -f /workspace/k8s/service.yaml && kubectl apply -f /workspace/k8s/deployment.yaml"'
                     
                     echo "Deployment complete. Check Minikube status on the host."
                 }
