@@ -63,19 +63,15 @@ pipeline {
                     // 1. Substitute the image tag directly on the Jenkins agent.
                     sh "sed -i 's|\\\\\\${IMAGE_TAG}|${CURRENT_TAG}|g' k8s/deployment.yaml"
                     
-                    // 2. Use the 'dir' step to get the current workspace path.
-                    // This path is reliable for mounting into the container.
                     def WORKSPACE_PATH = pwd()
                     
-                    // 3. Execute the deployment command.
-                    // - Mounts the entire workspace path directly to the container's /usr/src/app (common working directory).
-                    // - Executes all kubectl commands using the correct path relative to the container's current directory.
                     sh """
                         docker run --rm \\
+                            --entrypoint "" \\ 
                             -v ${WORKSPACE_PATH}:/usr/src/app \\
                             -v \$HOME/.kube:/root/.kube \\
                             -w /usr/src/app \\
-                            bitnami/kubectl:latest /bin/sh -c "
+                            bitnami/kubectl:latest /bin/bash -c "
                                 kubectl apply -f k8s/pvc.yaml
                                 kubectl apply -f k8s/service.yaml
                                 kubectl apply -f k8s/deployment.yaml
