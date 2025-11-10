@@ -1,10 +1,6 @@
 pipeline {
     agent { label 'docker-build' } 
-    
-    options {
-        cleanWs() 
-    }
-    
+
     environment {
         DOCKER_IMAGE = "mach260595/aceest-fitness"
         DOCKERHUB_CREDENTIAL_ID = 'dockerhub-credentials'
@@ -13,6 +9,7 @@ pipeline {
     stages {
         stage('Test & Lint') {
             steps {
+                deleteDir() 
                 echo "Running unit tests and code checks on dedicated agent..."
                 sh 'python3 -m venv venv'
                 sh '. venv/bin/activate && pip install -r requirements.txt'
