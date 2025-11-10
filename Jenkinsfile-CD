@@ -26,6 +26,29 @@ pipeline {
             }
         }
 
+        stage('Build Image') {
+            steps {
+                script {
+                    env.IMAGE_TAG = sh(returnStdout: true, script: 'git rev-parse --short HEAD').trim()
+                }
+                echo "Building Docker image: ${env.DOCKER_IMAGE}:${env.IMAGE_TAG}"
+                sh "docker build -t ${env.DOCKER_IMAGE}:${env.IMAGE_TAG} ."
+            }
+        }
+        
+        stage('Push to Docker Hub') {
+            steps {
+                withCredentials([usernamePassword(credentialsId: "${env.DOCKERHUB_CREDENTIAL_ID}", 
+                                                  passwordVariable: 'DOCKER_PASSWORD', 
+                                                  usernameVariable: 'DOCKER_USERNAME')]) {
+                    sh "docker login -u ${DOCKER_USERNAME} -p ${DOCKER_PASSWORD}"
+                    sh "docker push ${env.DOCKER_IMAGE}:${env.IMAGE_TAG}"
+                    sh "docker tag ${env.DOCKER_IMAGE}:${env.IMAGE_TAG} ${env.DOCKER_IMAGE}:latest"
+                    sh "docker push ${env.DOCKER_IMAGE}:latest"
+                }
+            }
+        }
+
         stage('Deploy to Minikube') {
             steps {
                 script {
