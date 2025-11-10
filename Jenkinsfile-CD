@@ -69,19 +69,13 @@ pipeline {
                     
                     echo "Applying deployment with image tag: ${CURRENT_TAG}"
                     
-                    def SCRIPT = 'cd /workspace && ' +
+                    def SCRIPT = "cd /workspace && " +
                                  "sed -i 's|\\\${IMAGE_TAG}|${CURRENT_TAG}|g' k8s/deployment.yaml && " +
-                                 'kubectl apply -f k8s/pvc.yaml && ' +
-                                 'kubectl apply -f k8s/service.yaml && ' +
-                                 'kubectl apply -f k8s/deployment.yaml'
+                                 "kubectl apply -f k8s/pvc.yaml && " +
+                                 "kubectl apply -f k8s/service.yaml && " +
+                                 "kubectl apply -f k8s/deployment.yaml"
 
-                    sh """
-                        docker run --rm \\
-                            --entrypoint '' \\
-                            -v \$(pwd):/workspace \\
-                            -v \$HOME/.kube:/root/.kube \\
-                            bitnami/kubectl:latest /bin/bash -c "${SCRIPT}"
-                    """
+                    sh "docker run --rm --entrypoint '' -v \$(pwd):/workspace -v \$HOME/.kube:/root/.kube bitnami/kubectl:latest /bin/bash -c \\\"${SCRIPT}\\\""
                     
                     echo "Deployment complete. Check Minikube status on the host."
                 }
