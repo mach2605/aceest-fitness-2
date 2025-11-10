@@ -63,32 +63,25 @@ pipeline {
                     // 1. Substitute the image tag directly on the Jenkins agent.
                     sh "sed -i 's|\\\\\\${IMAGE_TAG}|${CURRENT_TAG}|g' k8s/deployment.yaml"
                     
-                    // 2. Create the execution script in the workspace.
-                    writeFile(file: 'deploy.sh', text: """
-                        #!/bin/bash
-                        # Exit immediately on error and print commands
-                        set -eux 
-
-                        # Apply manifests from the mounted workspace
-                        kubectl apply -f /workspace/k8s/pvc.yaml
-                        kubectl apply -f /workspace/k8s/service.yaml
-                        kubectl apply -f /workspace/k8s/deployment.yaml
-                    """)
+                    // 2. Use the 'dir' step to get the current workspace path.
+                    // This path is reliable for mounting into the container.
+                    def WORKSPACE_PATH = pwd()
                     
-                    // CRITICAL FIX: Add execute permissions to the script file.
-                    sh 'chmod +x deploy.sh'
-                    
-                    // 3. Execute the script file inside the container.
+                    // 3. Execute the deployment command.
+                    // - Mounts the entire workspace path directly to the container's /usr/src/app (common working directory).
+                    // - Executes all kubectl commands using the correct path relative to the container's current directory.
                     sh """
-                        docker run --rm --entrypoint /bin/bash \\
-                            -v \$(pwd):/workspace \\
+                        docker run --rm \\
+                            -v ${WORKSPACE_PATH}:/usr/src/app \\
                             -v \$HOME/.kube:/root/.kube \\
-                            bitnami/kubectl:latest /workspace/deploy.sh
+                            -w /usr/src/app \\
+                            bitnami/kubectl:latest /bin/sh -c "
+                                kubectl apply -f k8s/pvc.yaml
+                                kubectl apply -f k8s/service.yaml
+                                kubectl apply -f k8s/deployment.yaml
+                            "
                     """
                     
-                    // 4. Clean up the temporary script file.
-                    sh "rm deploy.sh"
-
                     echo "Deployment complete. Check Minikube status on the host."
                 }
             }
