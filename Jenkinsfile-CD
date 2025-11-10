@@ -1,15 +1,12 @@
 // Jenkinsfile-CD
 
 pipeline {
-    // Explicitly target the agent that has the Docker daemon accessible for building/pushing
     agent { label 'docker-build' } 
     
-    // Trigger only on tags
     options {
         skipDefaultCheckout()
     }
     
-    // Environment variables for Docker Hub credentials and image name
     environment {
         DOCKER_IMAGE = "mach260595/aceest-fitness"
         DOCKERHUB_CREDENTIAL_ID = 'dockerhub-credentials'
@@ -29,7 +26,6 @@ pipeline {
         
         stage('Checkout Manifests & Code') {
             steps {
-                // Downloads the repository contents (code, Dockerfile, k8s YAMLs)
                 checkout scm 
             }
         }
@@ -37,7 +33,6 @@ pipeline {
         stage('Build Image') {
             steps {
                 script {
-                    // Use the Git Tag (e.g., v1.0.0) as the definitive IMAGE_TAG
                     env.IMAGE_TAG = env.TAG_NAME 
                 }
                 echo "Building Docker image: ${env.DOCKER_IMAGE}:${env.IMAGE_TAG}"
@@ -51,11 +46,7 @@ pipeline {
                                                   passwordVariable: 'DOCKER_PASSWORD', 
                                                   usernameVariable: 'DOCKER_USERNAME')]) {
                     sh "docker login -u ${DOCKER_USERNAME} -p ${DOCKER_PASSWORD}"
-                    
-                    // Push the newly built image tagged with the Git Tag
                     sh "docker push ${env.DOCKER_IMAGE}:${env.IMAGE_TAG}"
-                    
-                    // Tag and push 'latest' for convenience
                     sh "docker tag ${env.DOCKER_IMAGE}:${env.IMAGE_TAG} ${env.DOCKER_IMAGE}:latest"
                     sh "docker push ${env.DOCKER_IMAGE}:latest"
                 }
@@ -69,13 +60,13 @@ pipeline {
                     
                     echo "Applying deployment with image tag: ${CURRENT_TAG}"
                     
-                    def SCRIPT = "cd /workspace && " +
-                                 "sed -i 's|\\\${IMAGE_TAG}|${CURRENT_TAG}|g' k8s/deployment.yaml && " +
-                                 "kubectl apply -f k8s/pvc.yaml && " +
-                                 "kubectl apply -f k8s/service.yaml && " +
-                                 "kubectl apply -f k8s/deployment.yaml"
+                    def SCRIPT_ARGUMENT = 'cd /workspace && ' +
+                                         "sed -i 's|\\\${IMAGE_TAG}|${CURRENT_TAG}|g' k8s/deployment.yaml && " +
+                                         'kubectl apply -f k8s/pvc.yaml && ' +
+                                         'kubectl apply -f k8s/service.yaml && ' +
+                                         'kubectl apply -f k8s/deployment.yaml'
 
-                    sh 'docker run --rm --entrypoint \'\' -v $(pwd):/workspace -v $HOME/.kube:/root/.kube bitnami/kubectl:latest /bin/bash -c "' + SCRIPT + '"'
+                    sh 'docker run --rm --entrypoint \'\' -v $(pwd):/workspace -v $HOME/.kube:/root/.kube bitnami/kubectl:latest /bin/bash -c "' + SCRIPT_ARGUMENT + '"'
                     
                     echo "Deployment complete. Check Minikube status on the host."
                 }
