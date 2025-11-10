@@ -70,23 +70,33 @@ pipeline {
                     
                     def WORKSPACE_PATH = pwd()
                     
-                    // Deploy using kubectl inside Minikube container
-                    // This is the most reliable way since Minikube has direct access to the cluster
+                    // Use minikube kubectl command from the host
+                    // This is the proper way to run kubectl against a minikube cluster
                     sh """
-                        # Copy k8s manifests to Minikube container
-                        docker cp ${WORKSPACE_PATH}/k8s minikube:/tmp/k8s
+                        # Install minikube in the agent if not present
+                        if ! command -v minikube &> /dev/null; then
+                            echo "Installing minikube..."
+                            curl -LO https://storage.googleapis.com/minikube/releases/latest/minikube-linux-amd64
+                            install minikube-linux-amd64 /usr/local/bin/minikube
+                            rm minikube-linux-amd64
+                        fi
                         
-                        # Execute kubectl commands inside Minikube
-                        docker exec minikube kubectl apply -f /tmp/k8s/pvc.yaml
-                        docker exec minikube kubectl apply -f /tmp/k8s/service.yaml
-                        docker exec minikube kubectl apply -f /tmp/k8s/deployment.yaml
+                        # Use minikube kubectl to apply manifests
+                        # This automatically uses the correct context
+                        minikube kubectl -- apply -f ${WORKSPACE_PATH}/k8s/pvc.yaml
+                        minikube kubectl -- apply -f ${WORKSPACE_PATH}/k8s/service.yaml
+                        minikube kubectl -- apply -f ${WORKSPACE_PATH}/k8s/deployment.yaml
                         
                         # Wait for deployment to be ready
-                        docker exec minikube kubectl rollout status deployment/aceest-fitness --timeout=120s
+                        minikube kubectl -- rollout status deployment/aceest-fitness --timeout=120s
                         
                         # Show deployment status
-                        docker exec minikube kubectl get pods -l app=aceest-fitness
-                        docker exec minikube kubectl get svc aceest-fitness-service
+                        echo "=== Deployment Status ==="
+                        minikube kubectl -- get pods -l app=aceest-fitness
+                        minikube kubectl -- get svc aceest-fitness-service
+                        
+                        echo "=== Service URL ==="
+                        minikube service aceest-fitness-service --url
                     """
                     
                     echo "Deployment complete! Access your app with: minikube service aceest-fitness-service"
