@@ -1,5 +1,7 @@
 // Jenkinsfile-CD
 
+pipeline {
+    // Explicitly target the agent that has the Docker daemon accessible for building/pushing
     agent { label 'docker-build' } 
     
     // Trigger only on tags
@@ -10,7 +12,7 @@
     // Environment variables for Docker Hub credentials and image name
     environment {
         DOCKER_IMAGE = "mach260595/aceest-fitness"
-        DOCKERHUB_CREDENTIAL_ID = 'dockerhub-credentials' 
+        DOCKERHUB_CREDENTIAL_ID = 'dockerhub-credentials'
     }
 
     stages {
@@ -27,6 +29,7 @@
         
         stage('Checkout Manifests & Code') {
             steps {
+                // Downloads the repository contents (code, Dockerfile, k8s YAMLs)
                 checkout scm 
             }
         }
@@ -34,6 +37,7 @@
         stage('Build Image') {
             steps {
                 script {
+                    // Use the Git Tag (e.g., v1.0.0) as the definitive IMAGE_TAG
                     env.IMAGE_TAG = env.TAG_NAME 
                 }
                 echo "Building Docker image: ${env.DOCKER_IMAGE}:${env.IMAGE_TAG}"
@@ -69,19 +73,18 @@
                         docker run --rm \\
                             -v \$(pwd):/workspace \\
                             -v \$HOME/.kube:/root/.kube \\
-                            bitnami/kubectl:latest /bin/bash -c "
+                            bitnami/kubectl:latest /bin/bash -c ' // <-- FIX: Single quote here
                                 # Change directory inside the container
                                 cd /workspace
                                 
                                 # 1. Substitute the placeholder \${IMAGE_TAG} in deployment.yaml
-                                # The Groovy escape sequences are no longer needed here, but the shell escaping is retained.
                                 sed -i 's|\\\${IMAGE_TAG}|${CURRENT_TAG}|g' k8s/deployment.yaml
                                 
                                 # 2. Apply all Kubernetes manifests
                                 kubectl apply -f k8s/pvc.yaml
                                 kubectl apply -f k8s/service.yaml
                                 kubectl apply -f k8s/deployment.yaml
-                            "
+                            ' // <-- FIX: Single quote here
                     """
                     echo "Deployment complete. Check Minikube status on the host."
                 }
