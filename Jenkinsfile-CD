@@ -60,13 +60,13 @@ pipeline {
                     
                     echo "Applying deployment with image tag: ${CURRENT_TAG}"
                     
-                    sh "sed -i 's|\\\\\\${IMAGE_TAG}|${CURRENT_TAG}|g' k8s/deployment.yaml"
+                    sh "sed -i 's|\\${IMAGE_TAG}|${CURRENT_TAG}|g' k8s/deployment.yaml"
                     
                     def WORKSPACE_PATH = pwd()
                     
                     sh """
                         docker run --rm \\
-                            --entrypoint '' \\ 
+                            --entrypoint '' \\
                             -v ${WORKSPACE_PATH}:/usr/src/app \\
                             -v \$HOME/.kube:/root/.kube \\
                             -w /usr/src/app \\
