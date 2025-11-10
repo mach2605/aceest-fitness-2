@@ -10,14 +10,13 @@ pipeline {
     environment {
         DOCKER_IMAGE = "mach260595/aceest-fitness"
         DOCKERHUB_CREDENTIAL_ID = 'dockerhub-credentials'
-        KUBECONFIG = '/root/.kube/config'
     }
 
     stages {
         stage('Validate Tag') {
             steps {
                 script {
-                    if (env.TAG_NAME == null || env.TAG_NAME == "") {
+                    if (!env.TAG_NAME?.trim()) {
                         error "Pipeline must be triggered by a Git tag (e.g., v1.0.0). Aborting CD."
                     }
                     echo "Starting CD for image tag: ${env.TAG_NAME}"
@@ -25,102 +24,88 @@ pipeline {
             }
         }
         
-        stage('Checkout Manifests & Code') {
+        stage('Checkout Repository') {
             steps {
                 checkout scm 
             }
         }
 
-        stage('Build Image') {
+        stage('Build Docker Image') {
             steps {
                 script {
-                    env.IMAGE_TAG = env.TAG_NAME 
+                    env.IMAGE_TAG = env.TAG_NAME
+                    echo "🛠️ Building Docker image: ${env.DOCKER_IMAGE}:${env.IMAGE_TAG}"
+                    sh "docker build -t ${env.DOCKER_IMAGE}:${env.IMAGE_TAG} ."
                 }
-                echo "Building Docker image: ${env.DOCKER_IMAGE}:${env.IMAGE_TAG}"
-                sh "docker build -t ${env.DOCKER_IMAGE}:${env.IMAGE_TAG} ."
             }
         }
         
         stage('Push to Docker Hub') {
             steps {
-                withCredentials([usernamePassword(credentialsId: "${env.DOCKERHUB_CREDENTIAL_ID}", 
-                                                  passwordVariable: 'DOCKER_PASSWORD', 
-                                                  usernameVariable: 'DOCKER_USERNAME')]) {
-                    sh "docker login -u ${DOCKER_USERNAME} -p ${DOCKER_PASSWORD}"
-                    sh "docker push ${env.DOCKER_IMAGE}:${env.IMAGE_TAG}"
-                    sh "docker tag ${env.DOCKER_IMAGE}:${env.IMAGE_TAG} ${env.DOCKER_IMAGE}:latest"
-                    sh "docker push ${env.DOCKER_IMAGE}:latest"
+                withCredentials([usernamePassword(
+                    credentialsId: "${env.DOCKERHUB_CREDENTIAL_ID}", 
+                    passwordVariable: 'DOCKER_PASSWORD', 
+                    usernameVariable: 'DOCKER_USERNAME'
+                )]) {
+                    sh """
+                        echo "🔐 Logging into Docker Hub..."
+                        echo "${DOCKER_PASSWORD}" | docker login -u "${DOCKER_USERNAME}" --password-stdin
+                        
+                        echo "📦 Pushing Docker image..."
+                        docker push ${DOCKER_IMAGE}:${IMAGE_TAG}
+                        docker tag ${DOCKER_IMAGE}:${IMAGE_TAG} ${DOCKER_IMAGE}:latest
+                        docker push ${DOCKER_IMAGE}:latest
+                    """
                 }
             }
         }
 
-        // 🩵 NEW: Fix Windows kubeconfig paths when running in Linux container
-        stage('Fix kubeconfig for Linux') {
+        stage('Setup Minikube Context') {
             steps {
-                sh '''
-                echo "🔧 Checking kubeconfig for Windows-style paths..."
-                if [ -f "$KUBECONFIG" ]; then
-                    if grep -q "C:\\\\" "$KUBECONFIG"; then
-                        echo "⚙️  Detected Windows paths — converting to Linux format..."
-                        cp "$KUBECONFIG" "${KUBECONFIG}.bak"
-                        sed -i 's#C:\\\\Users\\\\cheth#\\/root#g' "$KUBECONFIG"
-                        sed -i 's#\\\\#/#g' "$KUBECONFIG"
-                        echo "✅ Kubeconfig updated successfully."
-                    else
-                        echo "✅ Kubeconfig already uses Linux paths."
-                    fi
-                else
-                    echo "⚠️  No kubeconfig found at $KUBECONFIG"
-                fi
-                '''
+                script {
+                    echo "⚙️ Checking Minikube status..."
+                    sh '''
+                        if ! minikube status >/dev/null 2>&1; then
+                            echo "🚀 Starting Minikube (inside Jenkins agent)..."
+                            minikube start --driver=docker --force --memory=4096 --cpus=2
+                        else
+                            echo "✅ Minikube already running."
+                        fi
+
+                        echo "🔧 Configuring kubectl..."
+                        kubectl config use-context minikube
+                        kubectl cluster-info
+                    '''
+                }
             }
         }
 
-        stage('Deploy to Minikube') {
+        stage('Deploy to Kubernetes (Minikube)') {
             steps {
                 script {
-                    def CURRENT_TAG = env.TAG_NAME
-                    echo "Applying deployment with image tag: ${CURRENT_TAG}"
+                    echo "🚀 Deploying image ${DOCKER_IMAGE}:${IMAGE_TAG} to Minikube cluster..."
                     
-                    // Debug: List files to verify they exist
-                    sh "ls -la k8s/"
+                    sh '''
+                        ls -la k8s/
 
-                    // Update deployment.yaml with the current tag
-                    sh "sed -i 's|\\${IMAGE_TAG}|${CURRENT_TAG}|g' k8s/deployment.yaml"
+                        echo "🔄 Updating deployment.yaml with new image tag..."
+                        sed -i "s|\\${IMAGE_TAG}|${IMAGE_TAG}|g" k8s/deployment.yaml
 
-                    echo "Deploying to Minikube..."
-                    def WORKSPACE_PATH = pwd()
-                    
-                    sh """
-                        # Install minikube if not present
-                        if ! command -v minikube &> /dev/null; then
-                            echo "Installing minikube..."
-                            curl -LO https://storage.googleapis.com/minikube/releases/latest/minikube-linux-amd64
-                            install minikube-linux-amd64 /usr/local/bin/minikube
-                            rm minikube-linux-amd64
-                        fi
-                        
-                        echo "🔍 Verifying Minikube context..."
-                        minikube status || true
-                        minikube kubectl -- config current-context || true
-                        
-                        echo "🚀 Applying Kubernetes manifests..."
-                        minikube kubectl -- apply -f ${WORKSPACE_PATH}/k8s/pvc.yaml
-                        minikube kubectl -- apply -f ${WORKSPACE_PATH}/k8s/service.yaml
-                        minikube kubectl -- apply -f ${WORKSPACE_PATH}/k8s/deployment.yaml
-                        
+                        echo "📦 Applying Kubernetes manifests..."
+                        kubectl apply -f k8s/pvc.yaml
+                        kubectl apply -f k8s/service.yaml
+                        kubectl apply -f k8s/deployment.yaml
+
                         echo "⏳ Waiting for deployment rollout..."
-                        minikube kubectl -- rollout status deployment/aceest-fitness --timeout=120s
-                        
-                        echo "=== Deployment Status ==="
-                        minikube kubectl -- get pods -l app=aceest-fitness
-                        minikube kubectl -- get svc aceest-fitness-service
-                        
-                        echo "=== Service URL ==="
+                        kubectl rollout status deployment/aceest-fitness --timeout=120s
+
+                        echo "✅ Deployment successful!"
+                        kubectl get pods -l app=aceest-fitness
+                        kubectl get svc aceest-fitness-service
+
+                        echo "🌐 Minikube Service URL:"
                         minikube service aceest-fitness-service --url
-                    """
-                    
-                    echo "✅ Deployment complete! Access your app using the Minikube service URL above."
+                    '''
                 }
             }
         }
@@ -131,13 +116,13 @@ pipeline {
             }
         }
     }
-    
+
     post {
         success {
             echo "✅ CD Pipeline completed successfully for tag ${env.TAG_NAME}"
         }
         failure {
-            echo "❌ CD Pipeline failed. Check the logs above."
+            echo "❌ CD Pipeline failed. Check logs for details."
         }
     }
 }
