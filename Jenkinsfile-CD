@@ -1,10 +1,10 @@
 // Jenkinsfile-CD
 pipeline {
-    agent any
+    agent any 
     
     environment {
         DOCKER_IMAGE = "mach260595/aceest-fitness"
-        DOCKERHUB_CREDENTIAL_ID = 'dockerhub-credentials' // *** FIX for 'credentials ID null' error ***
+        DOCKERHUB_CREDENTIAL_ID = 'dockerhub-credentials'
     }
 
     stages {
@@ -21,8 +21,7 @@ pipeline {
         
         stage('Checkout Manifests & Code') {
             steps {
-                // Downloads all files (code, Dockerfile, k8s YAMLs)
-                checkout scm
+                checkout scm 
             }
         }
 
@@ -42,10 +41,7 @@ pipeline {
                                                   passwordVariable: 'DOCKER_PASSWORD', 
                                                   usernameVariable: 'DOCKER_USERNAME')]) {
                     sh "docker login -u ${DOCKER_USERNAME} -p ${DOCKER_PASSWORD}"
-                    
                     sh "docker push ${env.DOCKER_IMAGE}:${env.IMAGE_TAG}"
-                    
-                    // Tag and push 'latest' for convenience
                     sh "docker tag ${env.DOCKER_IMAGE}:${env.IMAGE_TAG} ${env.DOCKER_IMAGE}:latest"
                     sh "docker push ${env.DOCKER_IMAGE}:latest"
                 }
@@ -53,21 +49,32 @@ pipeline {
         }
 
         stage('Deploy to Minikube') {
+            agent {
+                docker {
+                    image 'bitnami/kubectl:latest'
+                    // This mount makes the Kube configuration (usually for Minikube) available to the container.
+                    args "-v $HOME/.kube:/root/.kube" 
+                }
+            }
             steps {
                 script {
                     def CURRENT_TAG = env.TAG_NAME
                     
                     echo "Applying deployment with image tag: ${CURRENT_TAG}"
                     
+                    // 1. Substitute the placeholder ${IMAGE_TAG} in deployment.yaml
+                    // This sed command runs inside the kubectl container now.
                     sh "sed -i 's|\\\${IMAGE_TAG}|${CURRENT_TAG}|g' k8s/deployment.yaml"
                     
-                    // Apply all Kubernetes manifests
+                    // 2. Apply all Kubernetes manifests (kubectl commands run successfully inside the container)
                     sh "kubectl apply -f k8s/pvc.yaml"
                     sh "kubectl apply -f k8s/service.yaml"
                     sh "kubectl apply -f k8s/deployment.yaml" 
                     
-                    echo "Deployment complete. Waiting for Minikube service URL..."
-                    sh "minikube service aceest-fitness-service --url"
+                    echo "Deployment complete."
+                    // The 'minikube service' command is omitted here as it may not be available inside the kubectl container.
+                    // You must run this command manually on the host where Minikube is running: 
+                    // minikube service aceest-fitness-service --url
                 }
             }
         }
