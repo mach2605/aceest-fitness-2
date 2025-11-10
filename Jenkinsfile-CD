@@ -10,6 +10,7 @@ pipeline {
     environment {
         DOCKER_IMAGE = "mach260595/aceest-fitness"
         DOCKERHUB_CREDENTIAL_ID = 'dockerhub-credentials'
+        KUBECONFIG = '/root/.kube/config'
     }
 
     stages {
@@ -53,27 +54,45 @@ pipeline {
             }
         }
 
+        // 🩵 NEW: Fix Windows kubeconfig paths when running in Linux container
+        stage('Fix kubeconfig for Linux') {
+            steps {
+                sh '''
+                echo "🔧 Checking kubeconfig for Windows-style paths..."
+                if [ -f "$KUBECONFIG" ]; then
+                    if grep -q "C:\\\\" "$KUBECONFIG"; then
+                        echo "⚙️  Detected Windows paths — converting to Linux format..."
+                        cp "$KUBECONFIG" "${KUBECONFIG}.bak"
+                        sed -i 's#C:\\\\Users\\\\cheth#\\/root#g' "$KUBECONFIG"
+                        sed -i 's#\\\\#/#g' "$KUBECONFIG"
+                        echo "✅ Kubeconfig updated successfully."
+                    else
+                        echo "✅ Kubeconfig already uses Linux paths."
+                    fi
+                else
+                    echo "⚠️  No kubeconfig found at $KUBECONFIG"
+                fi
+                '''
+            }
+        }
+
         stage('Deploy to Minikube') {
             steps {
                 script {
                     def CURRENT_TAG = env.TAG_NAME
-                    
                     echo "Applying deployment with image tag: ${CURRENT_TAG}"
                     
                     // Debug: List files to verify they exist
                     sh "ls -la k8s/"
-                    
+
                     // Update deployment.yaml with the current tag
                     sh "sed -i 's|\\${IMAGE_TAG}|${CURRENT_TAG}|g' k8s/deployment.yaml"
-                    
+
                     echo "Deploying to Minikube..."
-                    
                     def WORKSPACE_PATH = pwd()
                     
-                    // Use minikube kubectl command from the host
-                    // This is the proper way to run kubectl against a minikube cluster
                     sh """
-                        # Install minikube in the agent if not present
+                        # Install minikube if not present
                         if ! command -v minikube &> /dev/null; then
                             echo "Installing minikube..."
                             curl -LO https://storage.googleapis.com/minikube/releases/latest/minikube-linux-amd64
@@ -81,16 +100,18 @@ pipeline {
                             rm minikube-linux-amd64
                         fi
                         
-                        # Use minikube kubectl to apply manifests
-                        # This automatically uses the correct context
+                        echo "🔍 Verifying Minikube context..."
+                        minikube status || true
+                        minikube kubectl -- config current-context || true
+                        
+                        echo "🚀 Applying Kubernetes manifests..."
                         minikube kubectl -- apply -f ${WORKSPACE_PATH}/k8s/pvc.yaml
                         minikube kubectl -- apply -f ${WORKSPACE_PATH}/k8s/service.yaml
                         minikube kubectl -- apply -f ${WORKSPACE_PATH}/k8s/deployment.yaml
                         
-                        # Wait for deployment to be ready
+                        echo "⏳ Waiting for deployment rollout..."
                         minikube kubectl -- rollout status deployment/aceest-fitness --timeout=120s
                         
-                        # Show deployment status
                         echo "=== Deployment Status ==="
                         minikube kubectl -- get pods -l app=aceest-fitness
                         minikube kubectl -- get svc aceest-fitness-service
@@ -99,7 +120,7 @@ pipeline {
                         minikube service aceest-fitness-service --url
                     """
                     
-                    echo "Deployment complete! Access your app with: minikube service aceest-fitness-service"
+                    echo "✅ Deployment complete! Access your app using the Minikube service URL above."
                 }
             }
         }
