@@ -46,7 +46,7 @@ kubectl apply -f k8s/pvc.yaml
 kubectl apply -f k8s/deployment.yaml
 kubectl apply -f k8s/service.yaml
 
-//
+////
 
 Notes
 
