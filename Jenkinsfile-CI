@@ -1,7 +1,4 @@
-// Jenkinsfile-CI
-
 pipeline {
-    // 1. Run directly on the Jenkins controller (agent any)
     agent any 
     
     environment {
@@ -13,7 +10,6 @@ pipeline {
         stage('Test & Lint') {
             steps {
                 echo "Running unit tests and code checks using Docker run command..."
-                // 2. Use a manual 'docker run' to bypass the agent { docker { } } permission issue
                 sh """
                 docker run --rm \
                   -v \${PWD}:/usr/src/app \
@@ -28,26 +24,26 @@ pipeline {
         }
         
         stage('Build Image') {
-            environment {
-                // Use the short Git commit hash for the image tag
-                IMAGE_TAG = sh(returnStdout: true, script: 'git rev-parse --short HEAD').trim() [cite: 9]
-            }
             steps {
+                script {
+                    env.IMAGE_TAG = sh(returnStdout: true, script: 'git rev-parse --short HEAD').trim()
+                }
                 echo "Building Docker image: ${env.DOCKER_IMAGE}:${env.IMAGE_TAG}"
-                sh "docker build -t ${env.DOCKER_IMAGE}:${env.IMAGE_TAG} ." [cite: 10]
+                sh "docker build -t ${env.DOCKER_IMAGE}:${env.IMAGE_TAG} ."
             }
         }
         
         stage('Push to Docker Hub') {
             steps {
                 withCredentials([usernamePassword(credentialsId: "${env.DOCKERHUB_CREDENTIAL_ID}", 
-                                         passwordVariable: 'DOCKER_PASSWORD', 
-                                         usernameVariable: 'DOCKER_USERNAME')]) { [cite: 11]
+                                                  passwordVariable: 'DOCKER_PASSWORD', 
+                                                  usernameVariable: 'DOCKER_USERNAME')]) {
                     sh "docker login -u ${DOCKER_USERNAME} -p ${DOCKER_PASSWORD}"
-                    sh "docker push ${env.DOCKER_IMAGE}:${env.IMAGE_TAG}" [cite: 12]
+                    
+                    sh "docker push ${env.DOCKER_IMAGE}:${env.IMAGE_TAG}"
                     
                     sh "docker tag ${env.DOCKER_IMAGE}:${env.IMAGE_TAG} ${env.DOCKER_IMAGE}:latest"
-                    sh "docker push ${env.DOCKER_IMAGE}:latest" [cite: 13]
+                    sh "docker push ${env.DOCKER_IMAGE}:latest"
                 }
             }
         }
