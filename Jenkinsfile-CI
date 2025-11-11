@@ -32,7 +32,7 @@ pipeline {
                 scannerHome = tool 'SonarScanner'
             }
             steps {
-                withCredentials([string(credentialsId: 'sonarqube-token', variable: 'SONAR_AUTH_TOKEN')]) {
+                withCredentials([string(credentialsId: 'sonar-token', variable: 'SONAR_AUTH_TOKEN')]) {
                     withSonarQubeEnv('sonarqube') {
                         sh """
                             ${scannerHome}/bin/sonar-scanner \
