@@ -16,6 +16,22 @@ pipeline {
                 sh '. venv/bin/activate && python3 -m pytest' 
             }
         }
+
+        stage('SonarQube Analysis') {
+            environment {
+                scannerHome = tool 'SonarScanner'
+            }
+            steps {
+                withSonarQubeEnv('sonarqube') {
+                    sh "${scannerHome}/bin/sonar-scanner \
+                    -Dsonar.projectKey=aceest-fitness \
+                    -Dsonar.sources=. \
+                    -Dsonar.host.url=http://host.docker.internal:9000 \
+                    -Dsonar.login=${SONAR_AUTH_TOKEN}"
+                }
+            }
+        }   
+
         
 
 
