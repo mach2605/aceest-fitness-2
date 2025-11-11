@@ -15,11 +15,7 @@ pipeline {
                     echo "▶️ Running tests with coverage..."
                     pytest --junitxml=results.xml --cov=. --cov-report=xml --cov-report=term-missing || true
 
-                    echo "🔍 Test Summary:"
-                    passed=$(grep -o 'PASSED' results.xml | wc -l || true)
-                    failed=$(grep -o 'FAILED' results.xml | wc -l || true)
-                    skipped=$(grep -o 'SKIPPED' results.xml | wc -l || true)
-                    echo "✅ Passed: $passed  ❌ Failed: $failed  ⚠️ Skipped: $skipped"
+                    ls -l results.xml || echo "⚠️ No test result file found!"
                 '''
             }
             post {
