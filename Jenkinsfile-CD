@@ -8,10 +8,23 @@ pipeline {
 
   stages {
 
-    stage('Skip if not a version tag') {
+    stage('Verify Tag Format') {
       when {
         expression {
-          // Skip build if not triggered by a tag or tag doesn't start with "v"
+          // Proceed only if this is a tag build starting with "v"
+          def tag = env.GIT_TAG_NAME ?: (env.GIT_BRANCH?.startsWith('refs/tags/') ? env.GIT_BRANCH.replace('refs/tags/', '') : null)
+          return tag?.startsWith('v')
+        }
+      }
+      steps {
+        echo "🏷️ Valid version tag detected — continuing deployment."
+      }
+    }
+
+    stage('Skip if not version tag') {
+      when {
+        expression {
+          // Skip this stage if it's a valid 'v' tag (so the build continues)
           def tag = env.GIT_TAG_NAME ?: (env.GIT_BRANCH?.startsWith('refs/tags/') ? env.GIT_BRANCH.replace('refs/tags/', '') : null)
           return !(tag?.startsWith('v'))
         }
@@ -31,7 +44,6 @@ pipeline {
     stage('Set Tag Name') {
       steps {
         script {
-          // Extract tag name (e.g. v1.0.3)
           def tag = env.GIT_TAG_NAME ?: sh(script: "git describe --tags --abbrev=0", returnStdout: true).trim()
           env.IMAGE_TAG = tag
           echo "🏷️ Detected version tag: ${IMAGE_TAG}"
