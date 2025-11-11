@@ -87,82 +87,67 @@ pipeline {
         sh '''
           echo 📋 Current Context:
           kubectl config current-context
-
           echo 🌐 Cluster Info:
           kubectl cluster-info
-
           echo 🧩 Kubernetes Nodes:
           kubectl get nodes
         '''
       }
     }
 
-    stage('Cleanup Old Blue/Green Deployments') {
+    stage('Blue-Green Deployment') {
       steps {
         script {
-          echo "🧹 Cleaning up old Blue/Green deployments..."
+          echo "🟦🟩 Starting Blue-Green deployment..."
+
+          // Apply shared resources
           sh """
-            kubectl delete deployment aceest-fitness-blue --ignore-not-found
-            kubectl delete deployment aceest-fitness-green --ignore-not-found
+            kubectl apply -f ${K8S_DIR}/pvc.yaml || true
+            kubectl apply -f ${K8S_DIR}/service.yaml
+            kubectl apply -f ${K8S_DIR}/deployment-blue.yaml
+            kubectl apply -f ${K8S_DIR}/deployment-green.yaml
           """
+
+          // Detect which version is currently live
+          def currentVersion = sh(
+            script: "kubectl get svc aceest-fitness-service -o jsonpath='{.spec.selector.version}' 2>/dev/null || echo 'none'",
+            returnStdout: true
+          ).trim()
+
+          if (!currentVersion || currentVersion == "none") {
+            echo "⚙️ First deployment detected — setting BLUE as live version."
+            currentVersion = "green" // ensures we switch to blue first
+          }
+
+          def newVersion = (currentVersion == "blue") ? "green" : "blue"
+          echo "🔁 Switching traffic from ${currentVersion} ➜ ${newVersion}"
+
+          try {
+            // Update inactive deployment image and wait for rollout
+            sh """
+              kubectl set image deployment/aceest-fitness-${newVersion} aceest-fitness=${DOCKER_HUB_REPO}:${IMAGE_TAG}
+              kubectl rollout status deployment/aceest-fitness-${newVersion} --timeout=180s
+
+              kubectl patch svc aceest-fitness-service -p '{"spec":{"selector":{"app":"aceest-fitness","version":"${newVersion}"}}}'
+            """
+
+            echo "✅ Traffic successfully switched to ${newVersion}!"
+            sh "kubectl get pods -l app=aceest-fitness -o wide"
+
+          } catch (err) {
+            echo "⚠️ ${newVersion} deployment failed — rolling back to ${currentVersion}."
+            sh """
+              kubectl patch svc aceest-fitness-service -p '{"spec":{"selector":{"app":"aceest-fitness","version":"${currentVersion}"}}}'
+            """
+            error("🚨 Blue-Green deployment failed, rolled back to ${currentVersion}")
+          }
         }
       }
     }
 
-    stage('Blue-Green Deployment') {
-    steps {
-        script {
-        echo "🟦🟩 Starting Blue-Green deployment..."
-
-        // Ensure all manifests exist
-        sh """
-            kubectl apply -f ${K8S_DIR}/pvc.yaml || true
-            kubectl apply -f ${K8S_DIR}/deployment-blue.yaml
-            kubectl apply -f ${K8S_DIR}/deployment-green.yaml
-            kubectl apply -f ${K8S_DIR}/service.yaml
-        """
-
-        // Detect which version is currently live
-        def currentVersion = sh(script: """
-            kubectl get svc aceest-fitness-service -o jsonpath='{.spec.selector.version}' 2>/dev/null || echo ''
-        """, returnStdout: true).trim()
-
-        if (!currentVersion) {
-            echo "⚙️ No current version found — defaulting to BLUE as initial deployment."
-            currentVersion = "green"  // So that we switch to blue first
-        }
-
-        def newVersion = (currentVersion == "blue") ? "green" : "blue"
-        echo "🔁 Switching traffic from ${currentVersion} ➜ ${newVersion}"
-
-        try {
-            // Update the image of the inactive deployment
-            sh """
-            kubectl set image deployment/aceest-fitness-${newVersion} aceest-fitness=${DOCKER_HUB_REPO}:${IMAGE_TAG}
-            kubectl rollout status deployment/aceest-fitness-${newVersion} --timeout=180s
-
-            # Switch service selector to new version
-            kubectl patch svc aceest-fitness-service -p '{"spec":{"selector":{"app":"aceest-fitness","version":"${newVersion}"}}}'
-            """
-
-            echo "✅ Traffic successfully switched to ${newVersion} deployment!"
-            sh "kubectl get pods -l app=aceest-fitness -o wide"
-
-        } catch (err) {
-            echo "⚠️ Deployment of ${newVersion} failed — rolling back to ${currentVersion}."
-            sh """
-            kubectl patch svc aceest-fitness-service -p '{"spec":{"selector":{"app":"aceest-fitness","version":"${currentVersion}"}}}'
-            """
-            error("🚨 Blue-Green deployment failed, rolled back to ${currentVersion}")
-        }
-        }
-    }
-    }
-
-
     stage('Verify Deployment Status') {
       steps {
-        echo "🔎 Verifying pods and service status..."
+        echo "🔎 Verifying deployment and pods..."
         sh """
           kubectl get deployments
           kubectl get pods -l app=aceest-fitness -o wide
