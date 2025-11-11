@@ -16,7 +16,7 @@ pipeline {
         checkout scm
       }
     }
-    
+
    stage('Fix kubeconfig paths for Linux agent') {
       steps {
         script {
@@ -33,6 +33,22 @@ pipeline {
           '''
         }
       }
+    }
+    stage('Patch Minikube API endpoint') {
+    steps {
+        script {
+        echo "🔧 Updating Minikube API endpoint..."
+        sh '''
+            MINIKUBE_IP=$(minikube ip)
+            if [ -n "$MINIKUBE_IP" ]; then
+            echo "🌐 Setting Minikube API to https://$MINIKUBE_IP:8443"
+            sed -i "s|server: https://127.0.0.1:[0-9]*|server: https://$MINIKUBE_IP:8443|g" /home/jenkins/.kube/config
+            else
+            echo "⚠️ Could not fetch Minikube IP!"
+            fi
+        '''
+        }
+    }
     }
 
 
