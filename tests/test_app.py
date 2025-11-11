@@ -56,3 +56,30 @@ def test_health_check(client):
     assert rv.status_code == 200
     data = rv.get_json()
     assert data['status'] == 'healthy'
+
+def test_api_charts(client):
+    rv = client.get('/api/charts')
+    assert rv.status_code == 200
+    data = rv.get_json()
+    assert 'Warm-up' in data
+    assert isinstance(data['Workout'], list)
+
+
+def test_api_diet(client):
+    rv = client.get('/api/diet')
+    assert rv.status_code == 200
+    data = rv.get_json()
+    assert 'Weight Loss' in data
+    assert isinstance(data['Muscle Gain'], list)
+
+
+def test_charts_page(client):
+    rv = client.get('/charts')
+    assert rv.status_code == 200
+    assert b'Workout Chart' in rv.data or b'Warm-up' in rv.data
+
+
+def test_diet_page(client):
+    rv = client.get('/diet')
+    assert rv.status_code == 200
+    assert b'Diet' in rv.data

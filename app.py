@@ -122,6 +122,64 @@ def health_check():
         {"status": "healthy", "version": "1.2", "timestamp": datetime.now().isoformat()}
     )
 
+# -------------------------------
+# NEW SECTION: Charts and Diet (V1.2)
+# -------------------------------
+
+WORKOUT_CHARTS = {
+    "Warm-up": ["5 min Jog", "Jumping Jacks", "Arm Circles", "Leg Swings", "Dynamic Stretching"],
+    "Workout": ["Push-ups", "Squats", "Plank", "Lunges", "Burpees", "Crunches"],
+    "Cool-down": ["Slow Walking", "Static Stretching", "Deep Breathing", "Yoga Poses"]
+}
+
+DIET_PLANS = {
+    "Weight Loss": [
+        "Oatmeal with Fruits",
+        "Grilled Chicken Salad",
+        "Vegetable Soup",
+        "Brown Rice & Stir-fry Veggies"
+    ],
+    "Muscle Gain": [
+        "Egg Omelet",
+        "Chicken Breast",
+        "Quinoa & Beans",
+        "Protein Shake",
+        "Greek Yogurt with Nuts"
+    ],
+    "Endurance": [
+        "Banana & Peanut Butter",
+        "Whole Grain Pasta",
+        "Sweet Potatoes",
+        "Salmon & Avocado",
+        "Trail Mix"
+    ]
+}
+
+
+@app.route("/charts")
+def workout_charts():
+    """Display recommended exercises per category."""
+    return render_template("charts.html", charts=WORKOUT_CHARTS)
+
+
+@app.route("/diet")
+def diet_chart():
+    """Display recommended diet plans."""
+    return render_template("diet.html", diets=DIET_PLANS)
+
+
+@app.route("/api/charts", methods=["GET"])
+def api_charts():
+    """Return JSON of workout charts."""
+    return jsonify(WORKOUT_CHARTS)
+
+
+@app.route("/api/diet", methods=["GET"])
+def api_diet():
+    """Return JSON of diet plans."""
+    return jsonify(DIET_PLANS)
+
+
 
 if __name__ == "__main__":
     if not DATA_FILE.exists():
