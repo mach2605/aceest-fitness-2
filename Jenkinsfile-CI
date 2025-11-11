@@ -1,11 +1,6 @@
 pipeline {
     agent { label 'docker-build' }
 
-    environment {
-        DOCKER_IMAGE = "mach260595/aceest-fitness"
-        DOCKERHUB_CREDENTIAL_ID = 'dockerhub-credentials'
-    }
-
     stages {
         stage('Test & Lint') {
             steps {
@@ -52,6 +47,7 @@ pipeline {
                 echo "📦 Archiving SonarQube artifacts..."
                 sh 'ls -R .scannerwork || true'
                 archiveArtifacts artifacts: '**/.scannerwork/**/*', allowEmptyArchive: true, fingerprint: true
+                archiveArtifacts artifacts: 'results.xml', fingerprint: true
             }
         }
 
