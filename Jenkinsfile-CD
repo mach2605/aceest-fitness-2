@@ -142,13 +142,17 @@ pipeline {
           """
 
           // Detect which version is live
-          def currentVersion = sh(script: "kubectl get svc aceest-fitness-service -o jsonpath='{.spec.selector.version}'", returnStdout: true).trim()
+          def currentVersion = sh(
+            script: "kubectl get svc aceest-fitness-service -o jsonpath='{.spec.selector.version}' 2>/dev/null || echo none",
+            returnStdout: true
+            ).trim()
           def newVersion = (currentVersion == "blue") ? "green" : "blue"
 
           echo "🔁 Switching traffic from ${currentVersion} ➜ ${newVersion}"
 
           try {
             sh """
+              sed -i "s|\\\${IMAGE_TAG}|${IMAGE_TAG}|g" ${K8S_DIR}/deployment-${newVersion}.yaml
               kubectl set image deployment/aceest-fitness-${newVersion} aceest-fitness=${DOCKER_HUB_REPO}:${IMAGE_TAG}
               kubectl rollout status deployment/aceest-fitness-${newVersion} --timeout=180s
               kubectl patch svc aceest-fitness-service -p '{"spec":{"selector":{"app":"aceest-fitness","version":"${newVersion}"}}}'

@@ -16,7 +16,7 @@ spec:
     spec:
       containers:
       - name: aceest-fitness
-        image: mach260595/aceest-fitness:${IMAGE_TAG} 
+        image: mach260595/aceest-fitness:${IMAGE_TAG}
         imagePullPolicy: Always
         ports:
         - containerPort: 5001
