@@ -1,0 +1,27 @@
+{
+  "Warm-up": [
+    {
+      "exercise": "Jumping Jacks",
+      "duration": 5,
+      "timestamp": "2025-11-11 18:32:00"
+    },
+    {
+      "exercise": "push",
+      "duration": 55,
+      "timestamp": "2025-11-11 19:30:52"
+    }
+  ],
+  "Workout": [
+    {
+      "exercise": "Push-ups",
+      "duration": 20,
+      "timestamp": "2025-11-11 18:33:10"
+    },
+    {
+      "exercise": "Push-ups",
+      "duration": 20,
+      "timestamp": "2025-11-11 19:29:48"
+    }
+  ],
+  "Cool-down": []
+}

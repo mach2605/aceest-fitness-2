@@ -1,13 +1,6 @@
 import json
-import os
-import sys
-import tempfile
 import pytest
-
-# Ensure project root is on sys.path so tests can import the app module
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
-
-from app import app
+from app import app, CATEGORIES
 
 @pytest.fixture
 def client():
@@ -19,11 +12,47 @@ def client():
 def test_index_page(client):
     rv = client.get('/')
     assert rv.status_code == 200
+    for cat in CATEGORIES:
+        assert cat.encode() in rv.data
 
 
-def test_api_get_workouts(client):
+def test_add_and_view_workout(client):
+    # Add a valid workout
+    rv = client.post('/add', data={
+        'category': 'Workout',
+        'exercise': 'Push-ups',
+        'duration': '20'
+    }, follow_redirects=True)
+    assert rv.status_code == 200
+
+    # View workouts
+    rv = client.get('/view')
+    assert rv.status_code == 200
+    assert b'Push-ups' in rv.data
+
+
+def test_api_workouts_structure(client):
     rv = client.get('/api/workouts')
     assert rv.status_code == 200
     data = rv.get_json()
-    # app may return a list (v1 converted app) or a dict (multi-category app). Accept both.
-    assert isinstance(data, (list, dict))
+    assert isinstance(data, dict)
+    for cat in CATEGORIES:
+        assert cat in data
+        assert isinstance(data[cat], list)
+
+
+def test_api_summary(client):
+    rv = client.get('/api/summary')
+    assert rv.status_code == 200
+    data = rv.get_json()
+    assert 'total_time' in data
+    assert 'message' in data
+    assert 'version' in data
+    assert data['version'] == '1.2'
+
+
+def test_health_check(client):
+    rv = client.get('/api/health')
+    assert rv.status_code == 200
+    data = rv.get_json()
+    assert data['status'] == 'healthy'

@@ -3,36 +3,42 @@
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>ACEestFitness - Simple</title>
+    <title>ACEestFitness - V1.2</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@4.6.2/dist/css/bootstrap.min.css" rel="stylesheet">
   </head>
   <body class="bg-light">
     <div class="container py-5">
-      <h1 class="mb-4">ACEestFitness - Simple (Converted from Tkinter)</h1>
+      <h1 class="mb-4">ACEestFitness V1.2 (Categorized)</h1>
 
       {% with messages = get_flashed_messages(with_categories=true) %}
       {% if messages %}
         {% for category, msg in messages %}
-          <div class="alert alert-{{ 'danger' if category == 'error' else 'success' }}" role="alert">
-            {{ msg }}
-          </div>
+          <div class="alert alert-{{ 'danger' if category == 'error' else 'success' }}">{{ msg }}</div>
         {% endfor %}
       {% endif %}
       {% endwith %}
 
       <form method="post" action="{{ url_for('add_workout') }}" class="mb-4">
         <div class="form-group">
-          <label for="workout">Workout</label>
-          <input id="workout" name="workout" class="form-control" placeholder="e.g., Push-ups">
+          <label for="category">Category</label>
+          <select id="category" name="category" class="form-control">
+            {% for cat in categories %}
+              <option value="{{ cat }}">{{ cat }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="form-group">
+          <label for="exercise">Exercise</label>
+          <input id="exercise" name="exercise" class="form-control" placeholder="e.g., Push-ups">
         </div>
         <div class="form-group">
           <label for="duration">Duration (minutes)</label>
           <input id="duration" name="duration" class="form-control" placeholder="e.g., 20">
         </div>
-        <button class="btn btn-primary">Add Workout</button>
+        <button class="btn btn-success">Add Session</button>
       </form>
 
-      <a class="btn btn-outline-secondary" href="{{ url_for('view_workouts') }}">View Workouts</a>
+      <a class="btn btn-outline-primary" href="{{ url_for('view_workouts') }}">View Summary</a>
     </div>
   </body>
 </html>
