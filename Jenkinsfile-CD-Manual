@@ -1,48 +1,23 @@
 pipeline {
   agent { label 'docker-build-agent' }
 
+  parameters {
+    string(name: 'IMAGE_TAG', defaultValue: 'v1.0.0', description: 'Enter the Docker image tag to deploy')
+  }
+
   environment {
     DOCKER_HUB_REPO = 'mach260595/aceest-fitness'
     K8S_DIR = 'k8s'
   }
 
   stages {
-
-    stage('Skip if not a tag build') {
-      when {
-        expression { 
-          // Skip if this pipeline was triggered by a plain push (no tag)
-          !env.GIT_BRANCH?.startsWith('refs/tags/') && !env.GIT_TAG_NAME
-        }
-      }
-      steps {
-        echo "⏭️ Skipping CD: This is not a tag build (triggered by a push)."
-        script { currentBuild.result = 'SUCCESS' }
-      }
-    }
-
     stage('Checkout') {
-      when { not { expression { currentBuild.result == 'SUCCESS' && currentBuild.previousBuild?.result == 'SUCCESS' } } }
       steps {
         checkout scm
       }
     }
 
-    stage('Determine Latest Tag') {
-      when { not { expression { currentBuild.result == 'SUCCESS' && currentBuild.previousBuild?.result == 'SUCCESS' } } }
-      steps {
-        script {
-          echo "🔍 Fetching latest Docker tag from Docker Hub..."
-          def tagJson = sh(script: "curl -s https://hub.docker.com/v2/repositories/${DOCKER_HUB_REPO}/tags/?page_size=1", returnStdout: true).trim()
-          def parsed = readJSON text: tagJson
-          env.IMAGE_TAG = parsed.results[0].name
-          echo "✅ Latest image tag detected: ${env.IMAGE_TAG}"
-        }
-      }
-    }
-
     stage('Verify Minikube Connectivity') {
-      when { not { expression { currentBuild.result == 'SUCCESS' && currentBuild.previousBuild?.result == 'SUCCESS' } } }
       steps {
         script {
           echo "⚙️ Verifying Minikube connectivity..."
@@ -61,7 +36,6 @@ pipeline {
     }
 
     stage('Deploy to Kubernetes (Minikube)') {
-      when { not { expression { currentBuild.result == 'SUCCESS' && currentBuild.previousBuild?.result == 'SUCCESS' } } }
       steps {
         script {
           echo "🚀 Deploying ${DOCKER_HUB_REPO}:${IMAGE_TAG} to Minikube..."
@@ -91,10 +65,10 @@ pipeline {
 
   post {
     success {
-      echo "✅ CD pipeline succeeded! Latest image deployed: ${IMAGE_TAG}"
+      echo "✅ Manual CD succeeded! Deployed ${DOCKER_HUB_REPO}:${IMAGE_TAG}"
     }
     failure {
-      echo "❌ CD pipeline failed. Check logs for details."
+      echo "❌ Manual CD failed. Check logs for details."
     }
   }
 }
