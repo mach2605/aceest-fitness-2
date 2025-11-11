@@ -2,22 +2,32 @@ pipeline {
     agent { label 'docker-build' }
 
     stages {
-        stage('Test & Lint') {
+
+        stage('Test, Lint & Coverage') {
             steps {
-                echo "🧪 Running unit tests and lint checks..."
+                echo "🧪 Running tests, linting, and collecting coverage..."
                 sh '''
                     python3 -m venv venv
                     . venv/bin/activate
                     pip install -r requirements.txt
                     pip install -r requirements-dev.txt
-                    # Run pytest with JUnit XML output for Jenkins
-                    pytest --junitxml=results.xml
+
+                    echo "▶️ Running tests with coverage..."
+                    pytest --junitxml=results.xml --cov=. --cov-report=xml --cov-report=term-missing || true
+
+                    echo "🔍 Test Summary:"
+                    passed=$(grep -o 'PASSED' results.xml | wc -l || true)
+                    failed=$(grep -o 'FAILED' results.xml | wc -l || true)
+                    skipped=$(grep -o 'SKIPPED' results.xml | wc -l || true)
+                    echo "✅ Passed: $passed  ❌ Failed: $failed  ⚠️ Skipped: $skipped"
                 '''
             }
             post {
                 always {
-                    echo "📊 Publishing test results..."
-                    junit 'results.xml' // ✅ Publish JUnit test report
+                    echo "📊 Publishing test & coverage results..."
+                    junit 'results.xml'
+                    cobertura coberturaReportFile: 'coverage.xml', autoUpdateHealth: false, autoUpdateStability: false
+                    archiveArtifacts artifacts: 'results.xml, coverage.xml', fingerprint: true
                 }
             }
         }
@@ -27,7 +37,7 @@ pipeline {
                 scannerHome = tool 'SonarScanner'
             }
             steps {
-                withCredentials([string(credentialsId: 'sonar-token', variable: 'SONAR_AUTH_TOKEN')]) {
+                withCredentials([string(credentialsId: 'sonarqube-token', variable: 'SONAR_AUTH_TOKEN')]) {
                     withSonarQubeEnv('sonarqube') {
                         sh """
                             ${scannerHome}/bin/sonar-scanner \
@@ -44,10 +54,9 @@ pipeline {
 
         stage('Archive Artifacts') {
             steps {
-                echo "📦 Archiving SonarQube artifacts..."
+                echo "📦 Archiving SonarQube and coverage artifacts..."
                 sh 'ls -R .scannerwork || true'
-                archiveArtifacts artifacts: '**/.scannerwork/**/*', allowEmptyArchive: true, fingerprint: true
-                archiveArtifacts artifacts: 'results.xml', fingerprint: true
+                archiveArtifacts artifacts: '**/.scannerwork/**/*, coverage.xml, results.xml', allowEmptyArchive: true, fingerprint: true
             }
         }
 
@@ -60,8 +69,11 @@ pipeline {
     }
 
     post {
-        always {
-            echo "✅ CI Pipeline completed successfully!"
+        success {
+            echo "✅ CI Pipeline completed successfully! All tests passed and code analyzed."
+        }
+        failure {
+            echo "❌ CI Pipeline failed. Check logs for errors."
         }
     }
 }
