@@ -43,7 +43,7 @@ pipeline {
 
           sh """
             echo 🔄 Updating image in ${K8S_DIR}/deployment.yaml...
-            sed -i 's|\\${IMAGE_TAG}|${tag}|g' ${K8S_DIR}/deployment.yaml
+            sed -i "s|\\\${IMAGE_TAG}|${tag}|g" ${K8S_DIR}/deployment.yaml
 
             echo 📦 Applying manifests...
             kubectl apply -f ${K8S_DIR}/pvc.yaml
@@ -67,7 +67,7 @@ pipeline {
 
   post {
     success {
-      echo "✅ Manual CD succeeded! Deployed ${params.DOCKER_HUB_REPO}:${params.IMAGE_TAG}"
+      echo "✅ Manual CD succeeded! Deployed ${DOCKER_HUB_REPO}:${params.IMAGE_TAG}"
     }
     failure {
       echo "❌ Manual CD failed. Check logs for details."
