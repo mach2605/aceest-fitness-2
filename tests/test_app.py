@@ -83,3 +83,41 @@ def test_diet_page(client):
     rv = client.get('/diet')
     assert rv.status_code == 200
     assert b'Diet' in rv.data
+
+def client():
+    app.config['TESTING'] = True
+    with app.test_client() as client:
+        yield client
+
+
+def test_index_page(client):
+    rv = client.get('/')
+    assert rv.status_code == 200
+
+
+def test_user_save_and_api(client, tmp_path):
+    # Save user via API
+    payload = {'name':'Test User','regn_id':'T1','age':25,'gender':'M','height':170,'weight':70}
+    rv = client.post('/api/user', json=payload)
+    assert rv.status_code == 200
+    rv = client.get('/api/user')
+    assert rv.status_code == 200
+    data = rv.get_json()
+    assert data.get('name') == 'Test User'
+
+
+def test_add_and_progress(client):
+    # Add workout
+    rv = client.post('/add', data={'category':'Workout','exercise':'Push-ups','duration':'20'}, follow_redirects=True)
+    assert rv.status_code == 200
+    rv = client.get('/api/progress')
+    assert rv.status_code == 200
+    data = rv.get_json()
+    assert 'totals' in data
+
+
+def test_export_requires_user(client):
+    # If no user, export should redirect with error flash
+    rv = client.get('/export', follow_redirects=True)
+    assert rv.status_code in (200,302)
+
