@@ -8,14 +8,16 @@ pipeline {
 
   stages {
 
-    stage('Skip if not a tag build') {
+    stage('Skip if not a version tag') {
       when {
-        expression { 
-          !env.GIT_BRANCH?.startsWith('refs/tags/') && !env.GIT_TAG_NAME
+        expression {
+          // Skip build if not triggered by a tag or tag doesn't start with "v"
+          def tag = env.GIT_TAG_NAME ?: (env.GIT_BRANCH?.startsWith('refs/tags/') ? env.GIT_BRANCH.replace('refs/tags/', '') : null)
+          return !(tag?.startsWith('v'))
         }
       }
       steps {
-        echo "⏭️ Skipping CD: This is not a tag build (triggered by a push)."
+        echo "⏭️ Skipping CD: Tag does not start with 'v' or not a tag build."
         script { currentBuild.result = 'SUCCESS' }
       }
     }
@@ -26,13 +28,21 @@ pipeline {
       }
     }
 
+    stage('Set Tag Name') {
+      steps {
+        script {
+          // Extract tag name (e.g. v1.0.3)
+          def tag = env.GIT_TAG_NAME ?: sh(script: "git describe --tags --abbrev=0", returnStdout: true).trim()
+          env.IMAGE_TAG = tag
+          echo "🏷️ Detected version tag: ${IMAGE_TAG}"
+        }
+      }
+    }
+
     stage('Build Docker Image') {
       steps {
         script {
-          def tag = env.GIT_TAG_NAME ?: (sh(script: "git describe --tags --abbrev=0", returnStdout: true).trim())
-          env.IMAGE_TAG = tag
-          echo "🏗️ Building Docker image: ${DOCKER_HUB_REPO}:${IMAGE_TAG}"
-
+          echo "🏗️ Building Docker image ${DOCKER_HUB_REPO}:${IMAGE_TAG}"
           sh """
             docker build -t ${DOCKER_HUB_REPO}:${IMAGE_TAG} .
             docker tag ${DOCKER_HUB_REPO}:${IMAGE_TAG} ${DOCKER_HUB_REPO}:latest
@@ -57,22 +67,17 @@ pipeline {
     stage('Verify Minikube Connectivity') {
       steps {
         script {
-          echo "⚙️ Verifying Minikube connectivity..."
+          echo "⚙️ Checking Minikube connection..."
           sh """
-            echo 📋 Current Context:
             kubectl config current-context
-
-            echo 🌐 Cluster Info:
             kubectl cluster-info
-
-            echo 🧩 Kubernetes Nodes:
             kubectl get nodes
           """
         }
       }
     }
 
-    stage('Deploy to Kubernetes (Minikube)') {
+    stage('Deploy to Kubernetes') {
       steps {
         script {
           echo "🚀 Deploying ${DOCKER_HUB_REPO}:${IMAGE_TAG} to Minikube..."
