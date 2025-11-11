@@ -35,7 +35,10 @@ pipeline {
         
         stage('Saving Artifacts') {
             steps {
-                archiveArtifacts artifacts: '.scannerwork/**', fingerprint: true
+                echo "📦 Archiving SonarQube artifacts..."
+                // safer pattern to avoid "doesn't match" error
+                sh 'ls -R .scannerwork || true'
+                archiveArtifacts artifacts: '**/.scannerwork/**/*', allowEmptyArchive: true, fingerprint: true
             }
         }
 
