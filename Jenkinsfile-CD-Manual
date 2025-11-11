@@ -16,6 +16,25 @@ pipeline {
         checkout scm
       }
     }
+    
+   stage('Fix kubeconfig paths for Linux agent') {
+      steps {
+        script {
+          echo "🧩 Fixing kubeconfig paths..."
+          sh '''
+            if [ -f /home/jenkins/.kube/config ]; then
+              echo "🔧 Patching kubeconfig..."
+              sed -i 's|C:\\\\Users\\\\cheth|/home/jenkins|g' /home/jenkins/.kube/config
+              sed -i 's|\\\\|/|g' /home/jenkins/.kube/config
+              echo "✅ kubeconfig patched successfully."
+            else
+              echo "⚠️ No kubeconfig found at /home/jenkins/.kube/config"
+            fi
+          '''
+        }
+      }
+    }
+
 
     stage('Verify Minikube Connectivity') {
       steps {
