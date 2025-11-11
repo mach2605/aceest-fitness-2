@@ -1,15 +1,14 @@
-// Jenkinsfile-CD
-
 pipeline {
-    agent { label 'docker-build' } 
-    
+    agent { label 'docker-build' }
+
     options {
         skipDefaultCheckout()
     }
-    
+
     environment {
         DOCKER_IMAGE = "mach260595/aceest-fitness"
         DOCKERHUB_CREDENTIAL_ID = 'dockerhub-credentials'
+        KUBE_CONTEXT = 'minikube'
     }
 
     stages {
@@ -17,16 +16,16 @@ pipeline {
             steps {
                 script {
                     if (!env.TAG_NAME?.trim()) {
-                        error "Pipeline must be triggered by a Git tag (e.g., v1.0.0). Aborting CD."
+                        error "❌ Pipeline must be triggered by a Git tag (e.g., v1.0.0)."
                     }
-                    echo "Starting CD for image tag: ${env.TAG_NAME}"
+                    echo "🏷️ Starting CD for image tag: ${env.TAG_NAME}"
                 }
             }
         }
-        
+
         stage('Checkout Repository') {
             steps {
-                checkout scm 
+                checkout scm
             }
         }
 
@@ -39,19 +38,19 @@ pipeline {
                 }
             }
         }
-        
+
         stage('Push to Docker Hub') {
             steps {
                 withCredentials([usernamePassword(
-                    credentialsId: "${env.DOCKERHUB_CREDENTIAL_ID}", 
-                    passwordVariable: 'DOCKER_PASSWORD', 
-                    usernameVariable: 'DOCKER_USERNAME'
+                    credentialsId: "${env.DOCKERHUB_CREDENTIAL_ID}",
+                    usernameVariable: 'DOCKER_USERNAME',
+                    passwordVariable: 'DOCKER_PASSWORD'
                 )]) {
                     sh """
                         echo "🔐 Logging into Docker Hub..."
                         echo "${DOCKER_PASSWORD}" | docker login -u "${DOCKER_USERNAME}" --password-stdin
-                        
-                        echo "📦 Pushing Docker image..."
+
+                        echo "📦 Pushing image to Docker Hub..."
                         docker push ${DOCKER_IMAGE}:${IMAGE_TAG}
                         docker tag ${DOCKER_IMAGE}:${IMAGE_TAG} ${DOCKER_IMAGE}:latest
                         docker push ${DOCKER_IMAGE}:latest
@@ -63,40 +62,34 @@ pipeline {
         stage('Setup Minikube Context') {
             steps {
                 script {
-                    echo "⚙️ Checking Minikube status..."
+                    echo "⚙️ Verifying Minikube context..."
                     sh '''
-                        if ! minikube status >/dev/null 2>&1; then
-                            echo "🚀 Starting Minikube (inside Jenkins agent)..."
-                            minikube start --driver=docker --force --memory=4096 --cpus=2
-                        else
-                            echo "✅ Minikube already running."
-                        fi
-
-                        echo "🔧 Configuring kubectl..."
-                        kubectl config use-context minikube
+                        kubectl config use-context ${KUBE_CONTEXT}
                         kubectl cluster-info
+                        kubectl get nodes
                     '''
                 }
             }
         }
 
-        stage('Deploy to Kubernetes (Minikube)') {
+        stage('Deploy to Kubernetes') {
             steps {
                 script {
-                    echo "🚀 Deploying image ${DOCKER_IMAGE}:${IMAGE_TAG} to Minikube cluster..."
-                    
+                    echo "🚀 Deploying image ${DOCKER_IMAGE}:${IMAGE_TAG} to Minikube..."
+
                     sh '''
+                        echo "📁 Listing Kubernetes manifests..."
                         ls -la k8s/
 
-                        echo "🔄 Updating deployment.yaml with new image tag..."
+                        echo "🔄 Updating deployment.yaml with image tag..."
                         sed -i "s|\\${IMAGE_TAG}|${IMAGE_TAG}|g" k8s/deployment.yaml
 
-                        echo "📦 Applying Kubernetes manifests..."
+                        echo "📦 Applying manifests..."
                         kubectl apply -f k8s/pvc.yaml
                         kubectl apply -f k8s/service.yaml
                         kubectl apply -f k8s/deployment.yaml
 
-                        echo "⏳ Waiting for deployment rollout..."
+                        echo "⏳ Waiting for rollout..."
                         kubectl rollout status deployment/aceest-fitness --timeout=120s
 
                         echo "✅ Deployment successful!"
@@ -109,7 +102,7 @@ pipeline {
                 }
             }
         }
-        
+
         stage('Cleanup Workspace') {
             steps {
                 deleteDir()
