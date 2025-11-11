@@ -2,55 +2,31 @@ pipeline {
     agent { label 'docker-build-agent' }
 
     environment {
-        DOCKER_IMAGE = "mach260595/aceest-fitness"
-        DOCKERHUB_CREDENTIAL_ID = 'dockerhub-credentials'
-        DEPLOYMENT_NAME = "aceest-fitness-deployment"
+        REGISTRY = 'mach260595'
+        IMAGE_NAME = 'aceest-fitness'
+        K8S_DIR = 'k8s'
     }
 
     stages {
-
-        stage('Validate Tag') {
-            steps {
-                script {
-                    if (!env.TAG_NAME?.trim()) {
-                        error "❌ Pipeline must be triggered by a Git tag (e.g., v1.0.0). Aborting CD."
-                    }
-                    echo "🏷️ Deploying image tag: ${env.TAG_NAME}"
-                }
-            }
-        }
-
-        stage('Checkout Repository') {
+        stage('Checkout Code') {
             steps {
                 checkout scm
             }
         }
 
-        stage('Build Docker Image') {
+        stage('Detect Tag Version') {
             steps {
                 script {
-                    echo "🛠️ Building Docker image: ${DOCKER_IMAGE}:${env.TAG_NAME}"
-                    sh "docker build -t ${DOCKER_IMAGE}:${env.TAG_NAME} ."
-                }
-            }
-        }
-
-        stage('Push to Docker Hub') {
-            steps {
-                withCredentials([usernamePassword(
-                    credentialsId: "${env.DOCKERHUB_CREDENTIAL_ID}",
-                    usernameVariable: 'DOCKER_USERNAME',
-                    passwordVariable: 'DOCKER_PASSWORD'
-                )]) {
-                    sh '''
-                        echo "🔐 Logging into Docker Hub..."
-                        echo "${DOCKER_PASSWORD}" | docker login -u "${DOCKER_USERNAME}" --password-stdin
-
-                        echo "📦 Pushing Docker image..."
-                        docker push ${DOCKER_IMAGE}:${TAG_NAME}
-                        docker tag ${DOCKER_IMAGE}:${TAG_NAME} ${DOCKER_IMAGE}:latest
-                        docker push ${DOCKER_IMAGE}:latest
-                    '''
+                // Detect tag from Jenkins env or Git directly
+                    IMAGE_TAG = sh(
+                        script: '''
+                            TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "latest")
+                            echo $TAG
+                        ''',
+                        returnStdout: true
+                    ).trim()
+                    echo "🏷️ Using image tag: ${IMAGE_TAG}"
+                    env.IMAGE_TAG = IMAGE_TAG
                 }
             }
         }
@@ -60,14 +36,36 @@ pipeline {
                 script {
                     echo "⚙️ Verifying Minikube connectivity..."
                     sh '''
-                        echo "📋 Current Context:"
+                        echo 📋 Current Context:
                         kubectl config current-context
-
-                        echo "🌐 Cluster Info:"
+                        echo 🌐 Cluster Info:
                         kubectl cluster-info
-
-                        echo "🧩 Kubernetes Nodes:"
+                        echo 🧩 Kubernetes Nodes:
                         kubectl get nodes
+                    '''
+                }
+            }
+        }
+
+        stage('Build Docker Image') {
+            steps {
+                script {
+                    echo "🐳 Building Docker image: ${REGISTRY}/${IMAGE_NAME}:${IMAGE_TAG}"
+                    sh "docker build -t ${REGISTRY}/${IMAGE_NAME}:${IMAGE_TAG} ."
+                }
+            }
+        }
+
+        stage('Push to Docker Hub') {
+            environment {
+                DOCKERHUB_CREDS = credentials('dockerhub-cred')
+            }
+            steps {
+                script {
+                    echo "📤 Pushing Docker image to Docker Hub..."
+                    sh '''
+                        echo "${DOCKERHUB_CREDS_PSW}" | docker login -u "${DOCKERHUB_CREDS_USR}" --password-stdin
+                        docker push ${REGISTRY}/${IMAGE_NAME}:${IMAGE_TAG}
                     '''
                 }
             }
@@ -76,42 +74,34 @@ pipeline {
         stage('Deploy to Kubernetes (Minikube)') {
             steps {
                 script {
-                    echo "🚀 Deploying ${DOCKER_IMAGE}:${TAG_NAME} to Minikube..."
-                    sh '''
-                        echo "🔄 Updating image in k8s/deployment.yaml..."
-                        sed -i "s|\\${IMAGE_TAG}|${TAG_NAME}|g" k8s/deployment.yaml || true
+                    echo "🚀 Deploying ${REGISTRY}/${IMAGE_NAME}:${IMAGE_TAG} to Minikube..."
+                    sh """
+                        echo 🔄 Updating image in ${K8S_DIR}/deployment.yaml...
+                        sed -i "s|\\${IMAGE_TAG}|${IMAGE_TAG}|g" ${K8S_DIR}/deployment.yaml
 
-                        echo "📦 Applying manifests..."
-                        kubectl apply -f k8s/pvc.yaml
-                        kubectl apply -f k8s/service.yaml
-                        kubectl apply -f k8s/deployment.yaml
+                        echo 📦 Applying manifests...
+                        kubectl apply -f ${K8S_DIR}/pvc.yaml
+                        kubectl apply -f ${K8S_DIR}/service.yaml
+                        kubectl apply -f ${K8S_DIR}/deployment.yaml
 
-                        echo "⏳ Waiting for rollout..."
-                        kubectl rollout status deployment/${DEPLOYMENT_NAME} --timeout=180s
+                        echo ⏳ Waiting for rollout...
+                        kubectl rollout status deployment/aceest-fitness-deployment --timeout=180s
 
-
-                        echo "✅ Deployment complete!"
+                        echo ✅ Deployment complete!
                         kubectl get pods -l app=aceest-fitness
                         kubectl get svc aceest-fitness-service
 
-                        echo "🌍 Access your app via:"
-                        minikube service aceest-fitness-service --url
-                    '''
+                        echo 🌍 Access your app at:
+                        echo "http://$(minikube ip):$(kubectl get svc aceest-fitness-service -o jsonpath='{.spec.ports[0].nodePort}')"
+                    """
                 }
-            }
-        }
-
-        stage('Cleanup') {
-            steps {
-                echo "🧹 Cleaning workspace..."
-                deleteDir()
             }
         }
     }
 
     post {
         success {
-            echo "✅ CD pipeline completed successfully for ${env.TAG_NAME}"
+            echo "✅ CD pipeline executed successfully!"
         }
         failure {
             echo "❌ CD pipeline failed. Check logs for details."
