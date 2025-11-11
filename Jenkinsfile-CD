@@ -4,6 +4,7 @@ pipeline {
     environment {
         DOCKER_IMAGE = "mach260595/aceest-fitness"
         DOCKERHUB_CREDENTIAL_ID = 'dockerhub-credentials'
+        DEPLOYMENT_NAME = "aceest-fitness-deployment"
     }
 
     stages {
@@ -86,7 +87,8 @@ pipeline {
                         kubectl apply -f k8s/deployment.yaml
 
                         echo "⏳ Waiting for rollout..."
-                        kubectl rollout status deployment/aceest-fitness --timeout=180s
+                        kubectl rollout status deployment/${DEPLOYMENT_NAME} --timeout=180s
+
 
                         echo "✅ Deployment complete!"
                         kubectl get pods -l app=aceest-fitness
