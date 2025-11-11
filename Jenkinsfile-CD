@@ -8,29 +8,25 @@ pipeline {
 
   stages {
 
-    stage('Verify Tag Format') {
+    stage('Skip if not a version tag') {
       when {
         expression {
-          // Proceed only if this is a tag build starting with "v"
-          def tag = env.GIT_TAG_NAME ?: (env.GIT_BRANCH?.startsWith('refs/tags/') ? env.GIT_BRANCH.replace('refs/tags/', '') : null)
-          return tag?.startsWith('v')
+          // Detect tag name from Git environment
+          def tag = env.GIT_TAG_NAME ?: (
+            env.GIT_BRANCH?.startsWith('refs/tags/') ?
+            env.GIT_BRANCH.replace('refs/tags/', '') : null
+          )
+          // Only continue if tag starts with 'v'
+          if (tag?.startsWith('v')) {
+            env.IMAGE_TAG = tag
+            return false // don't skip
+          } else {
+            return true // skip this pipeline
+          }
         }
       }
       steps {
-        echo "🏷️ Valid version tag detected — continuing deployment."
-      }
-    }
-
-    stage('Skip if not version tag') {
-      when {
-        expression {
-          // Skip this stage if it's a valid 'v' tag (so the build continues)
-          def tag = env.GIT_TAG_NAME ?: (env.GIT_BRANCH?.startsWith('refs/tags/') ? env.GIT_BRANCH.replace('refs/tags/', '') : null)
-          return !(tag?.startsWith('v'))
-        }
-      }
-      steps {
-        echo "⏭️ Skipping CD: Tag does not start with 'v' or not a tag build."
+        echo "⏭️ Skipping CD: Not a version tag build."
         script { currentBuild.result = 'SUCCESS' }
       }
     }
@@ -41,37 +37,37 @@ pipeline {
       }
     }
 
-    stage('Set Tag Name') {
+    stage('Fix kubeconfig paths for Linux agent') {
       steps {
         script {
-          def tag = env.GIT_TAG_NAME ?: sh(script: "git describe --tags --abbrev=0", returnStdout: true).trim()
-          env.IMAGE_TAG = tag
-          echo "🏷️ Detected version tag: ${IMAGE_TAG}"
+          echo "🧩 Fixing kubeconfig paths..."
+          sh '''
+            if [ -f /home/jenkins/.kube/config ]; then
+              echo "🔧 Patching kubeconfig..."
+              sed -i 's|C:\\\\Users\\\\cheth|/home/jenkins|g' /home/jenkins/.kube/config
+              sed -i 's|\\\\|/|g' /home/jenkins/.kube/config
+              echo "✅ kubeconfig patched successfully."
+            else
+              echo "⚠️ No kubeconfig found at /home/jenkins/.kube/config"
+            fi
+          '''
         }
       }
     }
 
-    stage('Build Docker Image') {
+    stage('Patch Minikube API endpoint') {
       steps {
         script {
-          echo "🏗️ Building Docker image ${DOCKER_HUB_REPO}:${IMAGE_TAG}"
-          sh """
-            docker build -t ${DOCKER_HUB_REPO}:${IMAGE_TAG} .
-            docker tag ${DOCKER_HUB_REPO}:${IMAGE_TAG} ${DOCKER_HUB_REPO}:latest
-          """
-        }
-      }
-    }
-
-    stage('Push to Docker Hub') {
-      steps {
-        script {
-          echo "📤 Pushing Docker image to Docker Hub..."
-          sh """
-            echo "$DOCKER_HUB_PASSWORD" | docker login -u "$DOCKER_HUB_USERNAME" --password-stdin
-            docker push ${DOCKER_HUB_REPO}:${IMAGE_TAG}
-            docker push ${DOCKER_HUB_REPO}:latest
-          """
+          echo "🔧 Updating Minikube API endpoint..."
+          sh '''
+            MINIKUBE_IP=$(minikube ip)
+            if [ -n "$MINIKUBE_IP" ]; then
+              echo "🌐 Setting Minikube API to https://$MINIKUBE_IP:8443"
+              sed -i "s|server: https://127.0.0.1:[0-9]*|server: https://$MINIKUBE_IP:8443|g" /home/jenkins/.kube/config
+            else
+              echo "⚠️ Could not fetch Minikube IP!"
+            fi
+          '''
         }
       }
     }
@@ -79,28 +75,35 @@ pipeline {
     stage('Verify Minikube Connectivity') {
       steps {
         script {
-          echo "⚙️ Checking Minikube connection..."
+          echo "⚙️ Verifying Minikube connectivity..."
           sh """
+            echo 📋 Current Context:
             kubectl config current-context
-            kubectl cluster-info
-            kubectl get nodes
+
+            echo 🌐 Cluster Info:
+            kubectl cluster-info || true
+
+            echo 🧩 Kubernetes Nodes:
+            kubectl get nodes || true
           """
         }
       }
     }
 
-    stage('Deploy to Kubernetes') {
+    stage('Deploy to Kubernetes (Minikube)') {
       steps {
         script {
-          echo "🚀 Deploying ${DOCKER_HUB_REPO}:${IMAGE_TAG} to Minikube..."
+          def tag = env.IMAGE_TAG
+          echo "🚀 Deploying ${DOCKER_HUB_REPO}:${tag} to Minikube..."
+
           sh """
             echo 🔄 Updating image in ${K8S_DIR}/deployment.yaml...
-            sed -i 's|\\${IMAGE_TAG}|${IMAGE_TAG}|g' ${K8S_DIR}/deployment.yaml
+            sed -i "s|\\\${IMAGE_TAG}|${tag}|g" ${K8S_DIR}/deployment.yaml
 
             echo 📦 Applying manifests...
-            kubectl apply -f ${K8S_DIR}/pvc.yaml
-            kubectl apply -f ${K8S_DIR}/service.yaml
-            kubectl apply -f ${K8S_DIR}/deployment.yaml
+            kubectl apply -f \${K8S_DIR}/pvc.yaml
+            kubectl apply -f \${K8S_DIR}/service.yaml
+            kubectl apply -f \${K8S_DIR}/deployment.yaml
 
             echo ⏳ Waiting for rollout...
             kubectl rollout status deployment/aceest-fitness-deployment --timeout=180s
@@ -119,7 +122,7 @@ pipeline {
 
   post {
     success {
-      echo "✅ CD pipeline succeeded! Image ${DOCKER_HUB_REPO}:${IMAGE_TAG} built and deployed successfully."
+      echo "✅ CD pipeline succeeded! Image ${DOCKER_HUB_REPO}:${env.IMAGE_TAG} built and deployed successfully."
     }
     failure {
       echo "❌ CD pipeline failed. Check logs for details."
