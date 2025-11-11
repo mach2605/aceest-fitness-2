@@ -1,24 +1,20 @@
 pipeline {
-    agent { label 'docker-build' }
-
-    options {
-        skipDefaultCheckout()
-    }
+    agent { label 'docker-build-agent' }
 
     environment {
         DOCKER_IMAGE = "mach260595/aceest-fitness"
         DOCKERHUB_CREDENTIAL_ID = 'dockerhub-credentials'
-        KUBE_CONTEXT = 'minikube'
     }
 
     stages {
+
         stage('Validate Tag') {
             steps {
                 script {
                     if (!env.TAG_NAME?.trim()) {
-                        error "❌ Pipeline must be triggered by a Git tag (e.g., v1.0.0)."
+                        error "❌ Pipeline must be triggered by a Git tag (e.g., v1.0.0). Aborting CD."
                     }
-                    echo "🏷️ Starting CD for image tag: ${env.TAG_NAME}"
+                    echo "🏷️ Deploying image tag: ${env.TAG_NAME}"
                 }
             }
         }
@@ -32,9 +28,8 @@ pipeline {
         stage('Build Docker Image') {
             steps {
                 script {
-                    env.IMAGE_TAG = env.TAG_NAME
-                    echo "🛠️ Building Docker image: ${env.DOCKER_IMAGE}:${env.IMAGE_TAG}"
-                    sh "docker build -t ${env.DOCKER_IMAGE}:${env.IMAGE_TAG} ."
+                    echo "🛠️ Building Docker image: ${DOCKER_IMAGE}:${env.TAG_NAME}"
+                    sh "docker build -t ${DOCKER_IMAGE}:${env.TAG_NAME} ."
                 }
             }
         }
@@ -46,43 +41,44 @@ pipeline {
                     usernameVariable: 'DOCKER_USERNAME',
                     passwordVariable: 'DOCKER_PASSWORD'
                 )]) {
-                    sh """
+                    sh '''
                         echo "🔐 Logging into Docker Hub..."
                         echo "${DOCKER_PASSWORD}" | docker login -u "${DOCKER_USERNAME}" --password-stdin
 
-                        echo "📦 Pushing image to Docker Hub..."
-                        docker push ${DOCKER_IMAGE}:${IMAGE_TAG}
-                        docker tag ${DOCKER_IMAGE}:${IMAGE_TAG} ${DOCKER_IMAGE}:latest
+                        echo "📦 Pushing Docker image..."
+                        docker push ${DOCKER_IMAGE}:${TAG_NAME}
+                        docker tag ${DOCKER_IMAGE}:${TAG_NAME} ${DOCKER_IMAGE}:latest
                         docker push ${DOCKER_IMAGE}:latest
-                    """
+                    '''
                 }
             }
         }
 
-        stage('Setup Minikube Context') {
+        stage('Verify Minikube Connectivity') {
             steps {
                 script {
-                    echo "⚙️ Verifying Minikube context..."
+                    echo "⚙️ Verifying Minikube connectivity..."
                     sh '''
-                        kubectl config use-context ${KUBE_CONTEXT}
+                        echo "📋 Current Context:"
+                        kubectl config current-context
+
+                        echo "🌐 Cluster Info:"
                         kubectl cluster-info
+
+                        echo "🧩 Kubernetes Nodes:"
                         kubectl get nodes
                     '''
                 }
             }
         }
 
-        stage('Deploy to Kubernetes') {
+        stage('Deploy to Kubernetes (Minikube)') {
             steps {
                 script {
-                    echo "🚀 Deploying image ${DOCKER_IMAGE}:${IMAGE_TAG} to Minikube..."
-
+                    echo "🚀 Deploying ${DOCKER_IMAGE}:${TAG_NAME} to Minikube..."
                     sh '''
-                        echo "📁 Listing Kubernetes manifests..."
-                        ls -la k8s/
-
-                        echo "🔄 Updating deployment.yaml with image tag..."
-                        sed -i "s|\\${IMAGE_TAG}|${IMAGE_TAG}|g" k8s/deployment.yaml
+                        echo "🔄 Updating image in k8s/deployment.yaml..."
+                        sed -i "s|\\${IMAGE_TAG}|${TAG_NAME}|g" k8s/deployment.yaml || true
 
                         echo "📦 Applying manifests..."
                         kubectl apply -f k8s/pvc.yaml
@@ -90,21 +86,22 @@ pipeline {
                         kubectl apply -f k8s/deployment.yaml
 
                         echo "⏳ Waiting for rollout..."
-                        kubectl rollout status deployment/aceest-fitness --timeout=120s
+                        kubectl rollout status deployment/aceest-fitness --timeout=180s
 
-                        echo "✅ Deployment successful!"
+                        echo "✅ Deployment complete!"
                         kubectl get pods -l app=aceest-fitness
                         kubectl get svc aceest-fitness-service
 
-                        echo "🌐 Minikube Service URL:"
+                        echo "🌍 Access your app via:"
                         minikube service aceest-fitness-service --url
                     '''
                 }
             }
         }
 
-        stage('Cleanup Workspace') {
+        stage('Cleanup') {
             steps {
+                echo "🧹 Cleaning workspace..."
                 deleteDir()
             }
         }
@@ -112,10 +109,10 @@ pipeline {
 
     post {
         success {
-            echo "✅ CD Pipeline completed successfully for tag ${env.TAG_NAME}"
+            echo "✅ CD pipeline completed successfully for ${env.TAG_NAME}"
         }
         failure {
-            echo "❌ CD Pipeline failed. Check logs for details."
+            echo "❌ CD pipeline failed. Check logs for details."
         }
     }
 }
