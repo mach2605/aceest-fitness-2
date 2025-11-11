@@ -1,11 +1,9 @@
-from flask import Flask, render_template, request, redirect, url_for, flash, jsonify, send_file, make_response
+from flask import Flask, render_template, request, redirect, url_for, flash, jsonify, send_file
 from pathlib import Path
-from datetime import datetime, date, timedelta
-import json
-import io
-import os
+from datetime import datetime
+import json, io, os
 
-# PDF generation
+# optional PDF support (reportlab)
 try:
     from reportlab.pdfgen import canvas as pdf_canvas
     from reportlab.lib.pagesizes import A4
@@ -19,13 +17,13 @@ app = Flask(__name__)
 app.secret_key = 'change-this-secret-for-prod'
 
 BASE_DIR = Path(__file__).parent
-USER_FILE = BASE_DIR / 'data/user_info.json'
-WORKOUTS_FILE = BASE_DIR / 'data/workouts.json'
+DATA_DIR = BASE_DIR / "data"
+DATA_DIR.mkdir(exist_ok=True)
+USER_FILE = DATA_DIR / 'user_info.json'
+WORKOUTS_FILE = DATA_DIR / 'workouts.json'
 
 CATEGORIES = ["Warm-up", "Workout", "Cool-down"]
 MET_VALUES = {"Warm-up": 3, "Workout": 6, "Cool-down": 2.5}
-
-# -------------------- Utilities: read/write JSON --------------------
 
 def load_user():
     if USER_FILE.exists():
@@ -35,10 +33,8 @@ def load_user():
             return {}
     return {}
 
-
 def save_user(user):
     USER_FILE.write_text(json.dumps(user, indent=2), encoding='utf-8')
-
 
 def load_workouts():
     if WORKOUTS_FILE.exists():
@@ -48,20 +44,16 @@ def load_workouts():
             pass
     return {cat: [] for cat in CATEGORIES}
 
-
 def save_workouts(workouts):
     WORKOUTS_FILE.write_text(json.dumps(workouts, indent=2), encoding='utf-8')
 
-
-# -------------------- Routes --------------------
-
+# --- Routes ---
 @app.route('/')
 def index():
     user = load_user()
     return render_template('index.html', categories=CATEGORIES, user=user)
 
-
-@app.route('/user', methods=['GET', 'POST'])
+@app.route('/user', methods=['GET','POST'])
 def user_info():
     if request.method == 'POST':
         name = request.form.get('name','').strip()
@@ -93,7 +85,6 @@ def user_info():
     else:
         user = load_user()
         return render_template('user.html', user=user)
-
 
 @app.route('/add', methods=['POST'])
 def add_workout():
@@ -131,7 +122,6 @@ def add_workout():
     flash(f"{exercise} added to {category} ({duration} min).", 'success')
     return redirect(url_for('index'))
 
-
 @app.route('/view')
 def view_workouts():
     workouts = load_workouts()
@@ -145,21 +135,17 @@ def view_workouts():
         message = 'Excellent dedication! Keep up the great work 🏆'
     return render_template('view.html', workouts=workouts, total_time=total_time, total_cal=round(total_cal,1), message=message)
 
-
 @app.route('/charts')
 def charts_page():
     return render_template('charts.html', charts=WORKOUT_CHARTS)
-
 
 @app.route('/diet')
 def diet_page():
     return render_template('diet.html', diets=DIET_PLANS)
 
-
 @app.route('/progress')
 def progress_page():
     return render_template('progress.html')
-
 
 @app.route('/export')
 def export_pdf():
@@ -171,7 +157,6 @@ def export_pdf():
         flash('Please save user info before exporting report.', 'error')
         return redirect(url_for('user_info'))
     workouts = load_workouts()
-    # Generate PDF in memory
     buffer = io.BytesIO()
     c = pdf_canvas.Canvas(buffer, pagesize=A4)
     w, h = A4
@@ -193,26 +178,21 @@ def export_pdf():
     buffer.seek(0)
     return send_file(buffer, as_attachment=True, download_name=f"{user.get('name','user')}_weekly_report.pdf", mimetype='application/pdf')
 
-
-# -------------------- APIs --------------------
-
+# APIs
 @app.route('/api/user', methods=['GET','POST'])
 def api_user():
     if request.method == 'GET':
         return jsonify(load_user())
     else:
         data = request.get_json() or {}
-        # minimal validation
         if not data.get('name'):
             return jsonify({'error':'name required'}), 400
         save_user(data)
         return jsonify({'status':'ok'})
 
-
 @app.route('/api/workouts', methods=['GET'])
 def api_workouts():
     return jsonify(load_workouts())
-
 
 @app.route('/api/progress', methods=['GET'])
 def api_progress():
@@ -221,55 +201,32 @@ def api_progress():
     total_minutes = sum(totals.values())
     return jsonify({'totals': totals, 'total_minutes': total_minutes})
 
-
 @app.route('/api/charts', methods=['GET'])
 def api_charts():
     return jsonify(WORKOUT_CHARTS)
-
 
 @app.route('/api/diet', methods=['GET'])
 def api_diet():
     return jsonify(DIET_PLANS)
 
-
 @app.route('/api/health', methods=['GET'])
 def api_health():
-    return jsonify({'status':'healthy','version':'1.4','timestamp': datetime.now().isoformat()})
+    return jsonify({'status':'healthy','version':'1.2.1','timestamp': datetime.now().isoformat()})
 
-
-# -------------------- Static data for charts/diets --------------------
+# static data
 WORKOUT_CHARTS = {
     "Warm-up": ["5 min Jog", "Jumping Jacks", "Arm Circles", "Leg Swings", "Dynamic Stretching"],
     "Workout": ["Push-ups", "Squats", "Plank", "Lunges", "Burpees", "Crunches"],
     "Cool-down": ["Slow Walking", "Static Stretching", "Deep Breathing", "Yoga Poses"]
 }
-
 DIET_PLANS = {
     "Weight Loss": ["Oatmeal with Fruits", "Grilled Chicken Salad", "Vegetable Soup", "Brown Rice & Stir-fry Veggies"],
     "Muscle Gain": ["Egg Omelet", "Chicken Breast", "Quinoa & Beans", "Protein Shake", "Greek Yogurt with Nuts"],
     "Endurance": ["Banana & Peanut Butter", "Whole Grain Pasta", "Sweet Potatoes", "Salmon & Avocado", "Trail Mix"]
 }
-# -------------------- Static data for charts/diets --------------------
-WORKOUT_CHARTS = {
-"Warm-up": ["5 min Jog", "Jumping Jacks", "Arm Circles", "Leg Swings", "Dynamic Stretching"],
-"Workout": ["Push-ups", "Squats", "Plank", "Lunges", "Burpees", "Crunches"],
-"Cool-down": ["Slow Walking", "Static Stretching", "Deep Breathing", "Yoga Poses"]
-}
 
-
-DIET_PLANS = {
-"Weight Loss": ["Oatmeal with Fruits", "Grilled Chicken Salad", "Vegetable Soup", "Brown Rice & Stir-fry Veggies"],
-"Muscle Gain": ["Egg Omelet", "Chicken Breast", "Quinoa & Beans", "Protein Shake", "Greek Yogurt with Nuts"],
-"Endurance": ["Banana & Peanut Butter", "Whole Grain Pasta", "Sweet Potatoes", "Salmon & Avocado", "Trail Mix"]
-}
-
-
-# -------------------- Startup --------------------
 if __name__ == '__main__':
-    # initialize empty data files if missing
-    if not USER_FILE.exists():
-        save_user({})
-    if not WORKOUTS_FILE.exists():
-        save_workouts({cat:[] for cat in CATEGORIES})
+    if not USER_FILE.exists(): save_user({})
+    if not WORKOUTS_FILE.exists(): save_workouts({cat:[] for cat in CATEGORIES})
     port = int(os.environ.get('PORT', 5001))
     app.run(host='0.0.0.0', port=port, debug=True)

@@ -3,12 +3,12 @@
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>ACEestFitness - V1.2</title>
+    <title>ACEestFitness - V1.2.1</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@4.6.2/dist/css/bootstrap.min.css" rel="stylesheet">
   </head>
   <body class="bg-light">
     <div class="container py-5">
-      <h1 class="mb-4">ACEestFitness V1.2 (Categorized)</h1>
+      <h1 class="mb-4">ACEestFitness V1.2.1</h1>
 
       {% with messages = get_flashed_messages(with_categories=true) %}
       {% if messages %}
@@ -18,27 +18,39 @@
       {% endif %}
       {% endwith %}
 
+      <a class="btn btn-outline-secondary mb-3" href="{{ url_for('user_info') }}">Set / Update User Info</a>
+
       <form method="post" action="{{ url_for('add_workout') }}" class="mb-4">
-        <div class="form-group">
-          <label for="category">Category</label>
-          <select id="category" name="category" class="form-control">
-            {% for cat in categories %}
-              <option value="{{ cat }}">{{ cat }}</option>
-            {% endfor %}
-          </select>
+        <div class="form-row">
+          <div class="form-group col-md-3">
+            <label for="category">Category</label>
+            <select id="category" name="category" class="form-control">
+              {% for cat in categories %}
+                <option value="{{ cat }}">{{ cat }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="form-group col-md-5">
+            <label for="exercise">Exercise</label>
+            <input id="exercise" name="exercise" class="form-control" placeholder="e.g., Push-ups">
+          </div>
+          <div class="form-group col-md-2">
+            <label for="duration">Duration (min)</label>
+            <input id="duration" name="duration" class="form-control" placeholder="20">
+          </div>
+          <div class="form-group col-md-2 align-self-end">
+            <button class="btn btn-success btn-block">Add Session</button>
+          </div>
         </div>
-        <div class="form-group">
-          <label for="exercise">Exercise</label>
-          <input id="exercise" name="exercise" class="form-control" placeholder="e.g., Push-ups">
-        </div>
-        <div class="form-group">
-          <label for="duration">Duration (minutes)</label>
-          <input id="duration" name="duration" class="form-control" placeholder="e.g., 20">
-        </div>
-        <button class="btn btn-success">Add Session</button>
       </form>
 
-      <a class="btn btn-outline-primary" href="{{ url_for('view_workouts') }}">View Summary</a>
+      <div class="btn-group mb-4" role="group">
+        <a class="btn btn-outline-primary" href="{{ url_for('view_workouts') }}">View Summary</a>
+        <a class="btn btn-outline-info" href="{{ url_for('charts_page') }}">Workout Plan</a>
+        <a class="btn btn-outline-success" href="{{ url_for('diet_page') }}">Diet Guide</a>
+        <a class="btn btn-outline-warning" href="{{ url_for('progress_page') }}">Progress</a>
+      </div>
+
     </div>
   </body>
 </html>

@@ -3,35 +3,71 @@
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Workout Summary</title>
+    <title>Workout Summary - ACEestFitness</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@4.6.2/dist/css/bootstrap.min.css" rel="stylesheet">
   </head>
   <body class="bg-light">
     <div class="container py-5">
-      <h1 class="mb-4">Workout Summary</h1>
 
-      {% for cat, sessions in workouts.items() %}
-        <h3 class="text-primary">{{ cat }}</h3>
-        {% if sessions %}
-          <ul class="list-group mb-3">
-            {% for entry in sessions %}
-              <li class="list-group-item">
-                {{ loop.index }}. {{ entry.exercise }} — {{ entry.duration }} min
-                <small class="text-muted float-right">{{ entry.timestamp }}</small>
-              </li>
-            {% endfor %}
-          </ul>
-        {% else %}
-          <div class="alert alert-secondary">No sessions recorded.</div>
-        {% endif %}
-      {% endfor %}
-
-      <div class="alert alert-info mt-4">
-        <strong>Total Time Spent:</strong> {{ total_time }} minutes<br>
-        <em>{{ message }}</em>
+      <div class="d-flex justify-content-between align-items-center mb-4">
+        <h1 class="mb-0">🏋️ Workout Summary</h1>
+        <a href="{{ url_for('export_pdf') }}" class="btn btn-outline-primary">
+          📄 Download Weekly PDF Report
+        </a>
       </div>
 
-      <a class="btn btn-link mt-4" href="{{ url_for('index') }}">Back</a>
+      {% if not workouts or workouts|length == 0 %}
+        <div class="alert alert-info">No workouts logged yet. Start by adding one!</div>
+      {% else %}
+
+        {% for category, sessions in workouts.items() %}
+          <h4 class="mt-4 text-primary">{{ category }}</h4>
+          {% if sessions %}
+            <div class="table-responsive">
+              <table class="table table-striped table-bordered mt-2">
+                <thead class="thead-light">
+                  <tr>
+                    <th>#</th>
+                    <th>Exercise</th>
+                    <th>Duration (min)</th>
+                    <th>Calories (kcal)</th>
+                    <th>Date</th>
+                  </tr>
+                </thead>
+                <tbody>
+                {% for s in sessions %}
+                  <tr>
+                    <td>{{ loop.index }}</td>
+                    <td>{{ s.get('exercise', '—') }}</td>
+                    <td>{{ s.get('duration', 0) }}</td>
+                    <td>{{ "%.1f"|format(s.get('calories', 0)) }}</td>
+                    <td>{{ s.get('timestamp', '—') }}</td>
+                  </tr>
+                {% endfor %}
+              </tbody>
+              </table>
+            </div>
+          {% else %}
+            <p class="text-muted">No entries yet for {{ category }}.</p>
+          {% endif %}
+        {% endfor %}
+
+        <div class="alert alert-secondary mt-4">
+          <strong>Total Duration:</strong> {{ total_time }} minutes <br>
+          <strong>Total Calories Burned:</strong> {{ total_cal }} kcal
+        </div>
+
+        <div class="alert alert-success mt-3">
+          💬 {{ message }}
+        </div>
+
+      {% endif %}
+
+      <div class="mt-4">
+        <a href="{{ url_for('index') }}" class="btn btn-link">← Back to Log</a>
+        <a href="{{ url_for('progress_page') }}" class="btn btn-outline-success ml-2">📊 View Progress Tracker</a>
+      </div>
+
     </div>
   </body>
 </html>
