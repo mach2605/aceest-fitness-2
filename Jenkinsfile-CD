@@ -13,7 +13,7 @@ pipeline {
         script {
           echo "🔍 Checking if this build was triggered by a Git tag..."
           def tagName = sh(script: "git describe --tags --exact-match 2>/dev/null || true", returnStdout: true).trim()
-          
+
           if (!tagName || !tagName.startsWith("v")) {
             echo "⏭️ Skipping CD: This is not a tag build (tag=$tagName)."
             currentBuild.result = 'SUCCESS'
@@ -112,29 +112,53 @@ pipeline {
       }
     }
 
-    stage('Deploy to Kubernetes (Minikube)') {
+    stage('Rolling Deployment') {
       steps {
         script {
-          echo "🚀 Deploying ${DOCKER_HUB_REPO}:${IMAGE_TAG} to Minikube..."
+          echo "🚀 Performing rolling update to ${DOCKER_HUB_REPO}:${IMAGE_TAG}..."
           sh """
-            echo 🔄 Updating image in ${K8S_DIR}/deployment.yaml...
             sed -i "s|\\\${IMAGE_TAG}|${IMAGE_TAG}|g" ${K8S_DIR}/deployment.yaml
-
-            echo 📦 Applying manifests...
-            kubectl apply -f ${K8S_DIR}/pvc.yaml
+            kubectl apply -f ${K8S_DIR}/pvc.yaml || true
             kubectl apply -f ${K8S_DIR}/service.yaml
             kubectl apply -f ${K8S_DIR}/deployment.yaml
 
-            echo ⏳ Waiting for rollout...
             kubectl rollout status deployment/aceest-fitness-deployment --timeout=180s
-
-            echo ✅ Deployment complete!
-            kubectl get pods -l app=aceest-fitness
-            kubectl get svc aceest-fitness-service
-
-            echo 🌍 Access your app at:
-            echo "http://\$(minikube ip):\$(kubectl get svc aceest-fitness-service -o jsonpath='{.spec.ports[0].nodePort}')"
           """
+          echo "✅ Rolling deployment complete!"
+        }
+      }
+    }
+
+    stage('Blue-Green Deployment') {
+      steps {
+        script {
+          echo "🟦🟩 Starting Blue-Green deployment..."
+
+          sh """
+            kubectl apply -f ${K8S_DIR}/pvc.yaml
+            kubectl apply -f ${K8S_DIR}/deployment-blue.yaml
+            kubectl apply -f ${K8S_DIR}/deployment-green.yaml
+            kubectl apply -f ${K8S_DIR}/service.yaml
+          """
+
+          // Detect which version is live
+          def currentVersion = sh(script: "kubectl get svc aceest-fitness-service -o jsonpath='{.spec.selector.version}'", returnStdout: true).trim()
+          def newVersion = (currentVersion == "blue") ? "green" : "blue"
+
+          echo "🔁 Switching traffic from ${currentVersion} ➜ ${newVersion}"
+
+          try {
+            sh """
+              kubectl set image deployment/aceest-fitness-${newVersion} aceest-fitness=${DOCKER_HUB_REPO}:${IMAGE_TAG}
+              kubectl rollout status deployment/aceest-fitness-${newVersion} --timeout=180s
+              kubectl patch svc aceest-fitness-service -p '{"spec":{"selector":{"app":"aceest-fitness","version":"${newVersion}"}}}'
+            """
+            echo "✅ Traffic switched to ${newVersion} deployment!"
+          } catch (err) {
+            echo "⚠️ New version failed readiness checks. Rolling back to ${currentVersion}..."
+            sh "kubectl patch svc aceest-fitness-service -p '{\"spec\":{\"selector\":{\"app\":\"aceest-fitness\",\"version\":\"${currentVersion}\"}}}'"
+            error("🚨 Blue-Green deployment failed, rolled back to ${currentVersion}")
+          }
         }
       }
     }
