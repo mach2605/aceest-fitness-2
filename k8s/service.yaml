@@ -8,7 +8,6 @@ spec:
   type: LoadBalancer
   selector:
     app: aceest-fitness
-    version: blue  
   ports:
     - protocol: TCP
       port: 80
