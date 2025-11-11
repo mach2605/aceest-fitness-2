@@ -33,7 +33,11 @@ pipeline {
         }   
 
         
-
+        stage('Saving Artifacts') {
+            steps {
+                archiveArtifacts artifacts: '.scannerwork/**', fingerprint: true
+            }
+        }
 
         stage('Cleanup') {
             steps {
@@ -42,10 +46,10 @@ pipeline {
             }
         }
     }
-    
+
     post {
-        success {
-            archiveArtifacts artifacts: '.scannerwork/**', fingerprint: true
+        always {
+            echo "Pipeline completed."
         }
     }
 }
