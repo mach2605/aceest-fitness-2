@@ -35,13 +35,12 @@ pipeline {
     stage('Fix kubeconfig paths for Linux agent') {
       steps {
         script {
-          echo "🧩 Fixing kubeconfig paths..."
           sh '''
             if [ -f /home/jenkins/.kube/config ]; then
-              echo "🔧 Patching kubeconfig..."
+              echo "🔧 Fixing kubeconfig paths..."
               sed -i 's|C:\\\\Users\\\\cheth|/home/jenkins|g' /home/jenkins/.kube/config
               sed -i 's|\\\\|/|g' /home/jenkins/.kube/config
-              echo "✅ kubeconfig patched successfully."
+              echo "✅ kubeconfig fixed successfully."
             else
               echo "⚠️ No kubeconfig found at /home/jenkins/.kube/config"
             fi
@@ -53,7 +52,6 @@ pipeline {
     stage('Patch Minikube API endpoint') {
       steps {
         script {
-          echo "🔧 Updating Minikube API endpoint..."
           sh '''
             MINIKUBE_IP=$(minikube ip)
             if [ -n "$MINIKUBE_IP" ]; then
@@ -67,26 +65,16 @@ pipeline {
       }
     }
 
-    stage('Build Docker Image') {
+    stage('Build & Push Docker Image') {
       steps {
         script {
-          echo "🏗️ Building Docker image: ${DOCKER_HUB_REPO}:${IMAGE_TAG}"
-          sh """
-            docker build -t ${DOCKER_HUB_REPO}:${IMAGE_TAG} .
-            docker tag ${DOCKER_HUB_REPO}:${IMAGE_TAG} ${DOCKER_HUB_REPO}:latest
-          """
-        }
-      }
-    }
-
-    stage('Push to Docker Hub') {
-      steps {
-        script {
-          echo "📤 Pushing Docker image to Docker Hub..."
+          echo "🏗️ Building and pushing image: ${DOCKER_HUB_REPO}:${IMAGE_TAG}"
           withCredentials([usernamePassword(credentialsId: 'dockerhub-credentials', usernameVariable: 'DOCKER_HUB_USERNAME', passwordVariable: 'DOCKER_HUB_PASSWORD')]) {
             sh """
+              docker build -t ${DOCKER_HUB_REPO}:${IMAGE_TAG} .
               echo "$DOCKER_HUB_PASSWORD" | docker login -u "$DOCKER_HUB_USERNAME" --password-stdin
               docker push ${DOCKER_HUB_REPO}:${IMAGE_TAG}
+              docker tag ${DOCKER_HUB_REPO}:${IMAGE_TAG} ${DOCKER_HUB_REPO}:latest
               docker push ${DOCKER_HUB_REPO}:latest
             """
           }
@@ -96,35 +84,27 @@ pipeline {
 
     stage('Verify Minikube Connectivity') {
       steps {
-        script {
-          echo "⚙️ Verifying Minikube connectivity..."
-          sh """
-            echo 📋 Current Context:
-            kubectl config current-context
+        sh '''
+          echo 📋 Current Context:
+          kubectl config current-context
 
-            echo 🌐 Cluster Info:
-            kubectl cluster-info
+          echo 🌐 Cluster Info:
+          kubectl cluster-info
 
-            echo 🧩 Kubernetes Nodes:
-            kubectl get nodes
-          """
-        }
+          echo 🧩 Kubernetes Nodes:
+          kubectl get nodes
+        '''
       }
     }
 
-    stage('Rolling Deployment') {
+    stage('Cleanup Old Blue/Green Deployments') {
       steps {
         script {
-          echo "🚀 Performing rolling update to ${DOCKER_HUB_REPO}:${IMAGE_TAG}..."
+          echo "🧹 Cleaning up old Blue/Green deployments..."
           sh """
-            sed -i "s|\\\${IMAGE_TAG}|${IMAGE_TAG}|g" ${K8S_DIR}/deployment.yaml
-            kubectl apply -f ${K8S_DIR}/pvc.yaml || true
-            kubectl apply -f ${K8S_DIR}/service.yaml
-            kubectl apply -f ${K8S_DIR}/deployment.yaml
-
-            kubectl rollout status deployment/aceest-fitness-deployment --timeout=180s
+            kubectl delete deployment aceest-fitness-blue --ignore-not-found
+            kubectl delete deployment aceest-fitness-green --ignore-not-found
           """
-          echo "✅ Rolling deployment complete!"
         }
       }
     }
@@ -132,38 +112,39 @@ pipeline {
     stage('Blue-Green Deployment') {
       steps {
         script {
-          echo "🟦🟩 Starting Blue-Green deployment..."
-
+          echo "🟩 Starting Blue-Green deployment..."
           sh """
             kubectl apply -f ${K8S_DIR}/pvc.yaml
-            kubectl apply -f ${K8S_DIR}/deployment-blue.yaml
-            kubectl apply -f ${K8S_DIR}/deployment-green.yaml
             kubectl apply -f ${K8S_DIR}/service.yaml
           """
 
-          // Detect which version is live
-          def currentVersion = sh(
-            script: "kubectl get svc aceest-fitness-service -o jsonpath='{.spec.selector.version}' 2>/dev/null || echo none",
-            returnStdout: true
-            ).trim()
+          // Randomly start with Blue for first deployment
+          def currentVersion = sh(script: "kubectl get svc aceest-fitness-service -o jsonpath='{.spec.selector.version}' 2>/dev/null || echo 'none'", returnStdout: true).trim()
           def newVersion = (currentVersion == "blue") ? "green" : "blue"
+          echo "🔁 Deploying new version as ${newVersion}"
 
-          echo "🔁 Switching traffic from ${currentVersion} ➜ ${newVersion}"
+          sh """
+            sed -i "s|\\\${IMAGE_TAG}|${IMAGE_TAG}|g" ${K8S_DIR}/deployment-${newVersion}.yaml
+            kubectl apply -f ${K8S_DIR}/deployment-${newVersion}.yaml
+            kubectl rollout status deployment/aceest-fitness-${newVersion} --timeout=180s
 
-          try {
-            sh """
-              sed -i "s|\\\${IMAGE_TAG}|${IMAGE_TAG}|g" ${K8S_DIR}/deployment-${newVersion}.yaml
-              kubectl set image deployment/aceest-fitness-${newVersion} aceest-fitness=${DOCKER_HUB_REPO}:${IMAGE_TAG}
-              kubectl rollout status deployment/aceest-fitness-${newVersion} --timeout=180s
-              kubectl patch svc aceest-fitness-service -p '{"spec":{"selector":{"app":"aceest-fitness","version":"${newVersion}"}}}'
-            """
-            echo "✅ Traffic switched to ${newVersion} deployment!"
-          } catch (err) {
-            echo "⚠️ New version failed readiness checks. Rolling back to ${currentVersion}..."
-            sh "kubectl patch svc aceest-fitness-service -p '{\"spec\":{\"selector\":{\"app\":\"aceest-fitness\",\"version\":\"${currentVersion}\"}}}'"
-            error("🚨 Blue-Green deployment failed, rolled back to ${currentVersion}")
-          }
+            echo "🔀 Switching traffic to ${newVersion}"
+            kubectl patch svc aceest-fitness-service -p '{"spec":{"selector":{"app":"aceest-fitness","version":"${newVersion}"}}}'
+          """
+
+          echo "✅ Blue-Green Deployment complete! Traffic now on ${newVersion}."
         }
+      }
+    }
+
+    stage('Verify Deployment Status') {
+      steps {
+        echo "🔎 Verifying pods and service status..."
+        sh """
+          kubectl get deployments
+          kubectl get pods -l app=aceest-fitness -o wide
+          kubectl get svc aceest-fitness-service
+        """
       }
     }
   }
